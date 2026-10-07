@@ -1,20 +1,33 @@
+import React, { useEffect } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { RootNavigator } from './src/navigation';
+import { useAuthViewModel } from './src/viewmodels/useAuthViewModel';
+import { GoogleAuthBottomSheet } from './src/components';
 
 export default function App() {
+  const { initAuth, isGoogleModalVisible, hideGoogleModal } = useAuthViewModel();
+
+  useEffect(() => {
+    initAuth();
+  }, [initAuth]);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <StatusBar style="dark" />
+        <RootNavigator />
+
+        {/* Popup cạnh dưới ràng buộc đăng nhập Google khi lần đầu mở app / chưa đăng nhập */}
+        <GoogleAuthBottomSheet
+          visible={isGoogleModalVisible}
+          isMandatory={true}
+          onSuccess={() => {
+            hideGoogleModal();
+          }}
+        />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
