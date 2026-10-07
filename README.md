@@ -1,98 +1,99 @@
-# HFinmate - Frontend Mobile App
+# HFinmate - Mobile Frontend Application
 
-Ứng dụng sổ chi tiêu cá nhân thông minh **HFinmate**, được xây dựng trên nền tảng **React Native (Expo)** và **TypeScript**, tuân thủ nghiêm ngặt nguyên lý kiến trúc **MVVM (Model - View - ViewModel)**.
-
----
-
-## 1. Giới Thiệu & Điểm Nổi Bật
-
-- **Giao diện hiện đại & Thân thiện**: Tone màu chủ đạo Forest Emerald thanh lịch, hỗ trợ tối ưu hiển thị trên cả iOS, Android và Web.
-- **Xác thực Google với Firebase Authentication**:
-  - Tích hợp Bottom Sheet đăng nhập bằng Google mượt mà ngay khi mở ứng dụng.
-  - Tự động đồng bộ tài khoản Google với Backend REST API (`POST /v1/auth/google`) để lấy phiên làm việc JWT.
-  - Hỗ trợ chế độ trải nghiệm nhanh (Demo Mode) và hoạt động offline ổn định.
-- **Quản lý thu chi toàn diện**:
-  - **Trang chủ (Dashboard)**: Theo dõi số dư, nhịp chi tiêu tháng hiện tại và danh sách các ngày chi gần nhất.
-  - **Sổ giao dịch (Transactions)**: Tra cứu nhanh, lọc theo phân loại (Tất cả / Thu / Chi), tìm kiếm theo từ khóa và xóa giao dịch.
-  - **Chi tiêu theo ngày (Daily Expenses)**: Bảng kê chi tiêu từng ngày kèm bộ tính toán tức thời.
-  - **Chi phí cố định (Fixed Expenses)**: Quản lý các khoản phí định kỳ (tiền trọ, điện nước, gửi xe, xăng xe) với tính năng chỉnh sửa nhanh (inline edit).
-  - **Báo cáo & Thống kê (Analytics)**: Biểu đồ cột nhịp chi 12 tháng, cơ cấu phần trăm danh mục và thống kê theo lịch.
-- **Lưu trữ & Ngoại tuyến (Offline-First)**: Lưu trữ dữ liệu an toàn với `@react-native-async-storage/async-storage`, tự động chuyển đổi sang bộ đệm cục bộ khi mất kết nối mạng.
+**HFinmate** is a smart personal expense tracking mobile application built on **React Native (Expo)** and **TypeScript**, strictly adhering to the **MVVM (Model - View - ViewModel)** architectural pattern.
 
 ---
 
-## 2. Công Nghệ Sử Dụng
+## 1. Overview & Key Features
 
-| Thành phần | Công nghệ / Thư viện |
+- **Modern & Elegant Design**: Forest Emerald brand theme with responsive layouts optimized across iOS, Android, and Web.
+- **Google Authentication with Firebase**:
+  - Seamless bottom-sheet login modal (`GoogleAuthBottomSheet`) prompted on initial application launch.
+  - Automatically synchronizes Google profiles with the Backend REST API (`POST /v1/auth/google`) to issue JWT sessions.
+  - Built-in Demo Test mode and resilient offline fallback support.
+- **Comprehensive Expense Management**:
+  - **Home Dashboard**: Real-time balance cards, current month spending rhythm, and recent expense groups.
+  - **Transaction Ledger**: Instant search, filter chips (All / Income / Expense), and item deletion.
+  - **Daily Expense Calculator**: Day-by-day itemized record keeper with instant formula evaluation.
+  - **Fixed Expenses**: Manage recurring monthly costs (rent, utilities, parking, fuel) with quick inline editing.
+  - **Analytics & Reports**: 12-month spending bar charts, category breakdown percentages, and calendar timeline stats.
+- **Offline-First Architecture**: Persistent local data caching via `@react-native-async-storage/async-storage` with seamless network recovery.
+
+---
+
+## 2. Technology Stack
+
+| Layer / Role | Technology |
 | :--- | :--- |
 | **Framework** | [React Native](https://reactnative.dev/) + [Expo](https://expo.dev/) (SDK 57) |
-| **Ngôn ngữ** | [TypeScript](https://www.typescriptlang.org/) (Strict Mode) |
-| **Kiến trúc** | MVVM (Model - View - ViewModel) |
-| **Quản lý trạng thái** | [Zustand](https://github.com/pmndrs/zustand) |
-| **Điều hướng** | [React Navigation](https://reactnavigation.org/) (Native Stack & Bottom Tabs) |
-| **HTTP Client** | [Axios](https://axios-http.com/) kèm interceptors |
-| **Xác thực** | [Firebase Authentication](https://firebase.google.com/docs/auth) (Modular SDK) |
-| **Lưu trữ cục bộ** | `@react-native-async-storage/async-storage` |
-| **Icons & Đồ họa** | `@expo/vector-icons`, `react-native-svg` |
+| **Language** | [TypeScript](https://www.typescriptlang.org/) (Strict Mode) |
+| **Architecture** | MVVM (Model - View - ViewModel) |
+| **State Management** | [Zustand](https://github.com/pmndrs/zustand) |
+| **Navigation** | [React Navigation](https://reactnavigation.org/) (Native Stack & Bottom Tabs) |
+| **HTTP Client** | [Axios](https://axios-http.com/) with request/response interceptors |
+| **Authentication** | [Firebase Authentication](https://firebase.google.com/docs/auth) (Modular SDK) |
+| **Local Storage** | `@react-native-async-storage/async-storage` |
+| **Graphics & Icons** | `@expo/vector-icons`, `react-native-svg` |
 
 ---
 
-## 3. Cấu Trúc Dự Án (MVVM)
+## 3. Project Directory Structure (MVVM)
 
 ```text
 HFinmate-frontend/
-├── assets/                     # Hình ảnh, icons, splash screen
+├── assets/                     # App assets, icons, splash images
 ├── src/
 │   ├── models/                 # Entities, DTOs & API Contracts (Data layer)
-│   ├── services/               # ApiClient, StorageService, Firebase & Repositories
-│   │   ├── api/                # Cấu hình Axios instance & Base URL
-│   │   ├── firebase/           # Cấu hình Firebase App & FirebaseAuthService
-│   │   ├── storage/            # Wrapper AsyncStorage type-safe
-│   │   └── repositories/       # Tầng trừu tượng dữ liệu (Auth, Transaction, Dashboard, ...)
-│   ├── viewmodels/             # Custom hooks chứa UI logic & Business logic (Zustand)
-│   ├── views/                  # Màn hình hiển thị JSX (HomeScreen, AnalyticsScreen, ...)
-│   ├── components/             # Reusable UI components & Bottom Sheet đăng nhập
-│   ├── navigation/             # Cấu hình Stack & Bottom Tab Navigation
+│   ├── services/               # Network ApiClient, Storage, Firebase & Repositories
+│   │   ├── api/                # Axios instance configuration & Base URL
+│   │   ├── firebase/           # Firebase App & FirebaseAuthService
+│   │   ├── storage/            # Type-safe AsyncStorage wrapper
+│   │   └── repositories/       # Data abstraction layer (Auth, Transaction, Dashboard, ...)
+│   ├── viewmodels/             # Custom hooks containing UI & business logic (Zustand)
+│   ├── views/                  # Presentation Screen components (HomeScreen, AnalyticsScreen, ...)
+│   ├── components/             # Reusable atomic UI components & GoogleAuthBottomSheet
+│   ├── navigation/             # Navigation stacks & Bottom tab navigator
 │   └── theme/                  # Design tokens (Colors, Spacing, Typography, Radius)
-├── App.tsx                     # Root component nạp Navigation & GoogleAuthBottomSheet
-├── metro.config.js             # Cấu hình Metro Bundler cho Firebase CJS & Package Exports
-├── app.json                    # Cấu hình Expo Application
+├── App.tsx                     # Application entry point with Navigation & Auth Modal
+├── metro.config.js             # Metro Bundler configuration for Firebase CJS & Package Exports
+├── app.json                    # Expo application manifest
 ├── package.json
 └── tsconfig.json
 ```
 
-> 📖 Chi tiết về nguyên lý thiết kế và phân tầng dữ liệu xem tại [ARCHITECTURE.md](ARCHITECTURE.md).
+> 📖 For full architectural design principles and layer responsibilities, refer to [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## 4. Hướng Dẫn Cài Đặt & Khởi Chạy
+## 4. Getting Started
 
-### 4.1. Yêu cầu môi trường
-- **Node.js**: Phiên bản 18.x trở lên.
-- **npm** hoặc **yarn**.
-- Thiết bị cài đặt ứng dụng **Expo Go** (có trên Google Play Store và Apple App Store) hoặc Simulator / Emulator.
+### 4.1. Prerequisites
+- **Node.js**: Version 18.x or later.
+- **npm** or **yarn**.
+- **Expo Go** mobile app (available on Google Play Store and Apple App Store) or a mobile Simulator / Emulator.
 
-### 4.2. Cài đặt thư viện
-Tại thư mục `HFinmate-frontend`, chạy:
+### 4.2. Install Dependencies
+In the `HFinmate-frontend` root directory, run:
 ```bash
 npm install
 ```
 
-### 4.3. Cấu hình biến môi trường (`.env`)
-Tạo file `.env` từ file mẫu `.env.example`:
+### 4.3. Environment Configuration (`.env`)
+Create a `.env` file from `.env.example`:
 ```bash
 cp .env.example .env
 ```
 
-Nội dung cấu hình chuẩn:
+Default configuration:
 ```env
-# 1. Địa chỉ Backend API Base URL
-# - Dành cho iOS Simulator hoặc Web: http://localhost:5000/v1
-# - Dành cho Android Emulator: http://10.0.2.2:5000/v1
-# - Dành cho Thiết bị thật (chạy Expo Go qua Wi-Fi chung): http://<IP_MAY_TINH>:5000/v1
-EXPO_PUBLIC_API_URL=http://localhost:5000/v1
+# 1. Backend REST API Base URL
+# - Render Cloud Production Server (Recommended - Globally accessible):
+EXPO_PUBLIC_API_URL=https://hfinmate-backend.onrender.com/v1
 
-# 2. Cấu hình Firebase Authentication
+# - Local development fallback (Uncomment if running local backend):
+# EXPO_PUBLIC_API_URL=http://localhost:5000/v1
+
+# 2. Firebase Authentication Configuration
 EXPO_PUBLIC_FIREBASE_API_KEY=AIzaSyA_DEMO_KEY_HFINMATE_FIREBASE_AUTH_2026
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=hfinmate-app.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=hfinmate-app
@@ -101,55 +102,50 @@ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789012
 EXPO_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:abcdef123456
 ```
 
-### 4.4. Khởi chạy ứng dụng
+### 4.4. Running the Application
 
-- **Khởi động Expo Metro Bundler**:
+- **Start Metro Bundler**:
   ```bash
   npx expo start
   ```
-- **Khởi động với cờ xóa bộ nhớ đệm (Khuyên dùng khi cập nhật thư viện)**:
+- **Start with Clean Cache (Recommended after adding dependencies)**:
   ```bash
   npx expo start -c
   ```
-- **Chạy trên trình duyệt Web**:
+- **Run on Web Browser**:
   ```bash
   npx expo start --web
   ```
-- **Kết nối thiết bị di động**:
-  - **Android**: Mở ứng dụng **Expo Go** và quét mã QR trên màn hình terminal.
-  - **iOS**: Mở ứng dụng **Camera** mặc định và quét mã QR để mở trong **Expo Go**.
+- **Launch on Mobile Device**:
+  - **Android**: Open the **Expo Go** app and scan the QR code displayed in the terminal.
+  - **iOS**: Open the default **Camera** app and scan the QR code to launch in **Expo Go**.
 
 ---
 
-## 5. Các Lệnh Hữu Ích
+## 5. Useful Scripts
 
 ```bash
-# Kiểm tra lỗi cú pháp và kiểu dữ liệu TypeScript
+# Type check with TypeScript compiler
 npx tsc --noEmit
 
-# Kiểm tra quy chuẩn mã nguồn bằng ESLint
+# Lint code with ESLint
 npm run lint
 
-# Khởi chạy Metro Bundler
+# Start Expo dev server
 npm start
 
-# Mở nhanh trên Android Emulator
+# Run directly on Android Emulator
 npm run android
 
-# Mở nhanh trên iOS Simulator
+# Run directly on iOS Simulator
 npm run ios
 ```
 
 ---
 
-## 6. Kết Nối Backend
+## 6. Backend Integration
 
-Để ứng dụng hoạt động đầy đủ chức năng và đồng bộ dữ liệu:
-1. Đảm bảo dịch vụ `HFinmate-backend` đang chạy tại cổng `5000`:
-   ```bash
-   cd ../HFinmate-backend
-   npm run dev
-   ```
-2. Kiểm tra trạng thái máy chủ Backend:
-   - Sức khỏe dịch vụ: `http://localhost:5000/health`
-   - Tài liệu API: `../HFinmate-backend/docs/api_documentation.md`
+The frontend seamlessly connects to the deployed cloud backend service:
+- **Cloud Backend API**: `https://hfinmate-backend.onrender.com/v1`
+- **Backend Health Check**: `https://hfinmate-backend.onrender.com/health`
+- **Backend API Documentation**: `../HFinmate-backend/docs/api_documentation.md`

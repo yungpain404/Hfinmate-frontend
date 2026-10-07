@@ -1,5 +1,4 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { Platform } from 'react-native';
 import { storageService } from '../storage/storageService';
 import { ApiError } from '../../models/api.model';
 
@@ -7,12 +6,10 @@ const getBaseUrl = (): string => {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
   }
-  // Android Emulator maps host machine localhost to 10.0.2.2
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:5000/v1';
-  }
-  return 'http://localhost:5000/v1';
+  // Production Render cloud server default
+  return 'https://hfinmate-backend.onrender.com/v1';
 };
+
 
 export const BASE_URL = getBaseUrl();
 
