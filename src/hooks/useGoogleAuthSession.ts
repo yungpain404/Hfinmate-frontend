@@ -35,11 +35,16 @@ export function useGoogleAuthSession(options?: UseGoogleAuthSessionOptions) {
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
     '205520143301-c3hegipsng8pelkjiclchclb0birr77u.apps.googleusercontent.com';
 
+  const iosClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ||
+    '205520143301-oiqi7d6d55ohama081kdlcmqpcnrfqpl.apps.googleusercontent.com';
+
   const redirectUri = 'https://auth.expo.io/@yungpain404/HFinmate';
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId,
     androidClientId,
+    iosClientId,
     redirectUri,
     scopes: ['profile', 'email'],
     responseType: 'id_token',

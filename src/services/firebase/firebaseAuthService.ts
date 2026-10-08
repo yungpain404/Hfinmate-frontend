@@ -145,11 +145,15 @@ export class FirebaseAuthService {
       const androidClientId =
         process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
         '205520143301-c3hegipsng8pelkjiclchclb0birr77u.apps.googleusercontent.com';
+      const iosClientId =
+        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ||
+        '205520143301-oiqi7d6d55ohama081kdlcmqpcnrfqpl.apps.googleusercontent.com';
 
       try {
         const { GoogleSignin } = require('@react-native-google-signin/google-signin');
         GoogleSignin.configure({
           webClientId,
+          iosClientId,
           scopes: ['profile', 'email'],
           offlineAccess: true,
         });

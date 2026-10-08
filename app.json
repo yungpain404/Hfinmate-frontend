@@ -36,13 +36,19 @@
     "plugins": [
       "expo-font",
       "expo-web-browser",
-      "@react-native-google-signin/google-signin"
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.205520143301-oiqi7d6d55ohama081kdlcmqpcnrfqpl"
+        }
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "344526cf-682b-44b7-bcd6-fba0d7700118"
       },
-      "googleAndroidClientId": "205520143301-c3hegipsng8pelkjiclchclb0birr77u.apps.googleusercontent.com"
+      "googleAndroidClientId": "205520143301-c3hegipsng8pelkjiclchclb0birr77u.apps.googleusercontent.com",
+      "googleIosClientId": "205520143301-oiqi7d6d55ohama081kdlcmqpcnrfqpl.apps.googleusercontent.com"
     }
   }
 }
