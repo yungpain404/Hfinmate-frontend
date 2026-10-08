@@ -141,6 +141,14 @@ export const Login: React.FC<LoginProps> = ({
 
       onSuccess?.(user);
     } catch (err: any) {
+      if (
+        err.message?.includes('hủy') ||
+        err.message?.includes('cancel') ||
+        err.message?.includes('closed') ||
+        err.message?.includes('dismiss')
+      ) {
+        return;
+      }
       setLocalError(err.message || 'Đăng nhập Google không thành công.');
     } finally {
       setIsSubmitting(false);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
@@ -72,11 +72,9 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   const [imageError, setImageError] = useState(false);
 
   // Reset error state if avatarUrl changes
-  const [lastUrl, setLastUrl] = useState<string | null | undefined>(avatarUrl);
-  if (avatarUrl !== lastUrl) {
-    setLastUrl(avatarUrl);
+  useEffect(() => {
     setImageError(false);
-  }
+  }, [avatarUrl]);
 
   const hasValidPhoto = Boolean(avatarUrl && avatarUrl.trim().length > 0 && !imageError);
   const initials = extractInitials(name, email);

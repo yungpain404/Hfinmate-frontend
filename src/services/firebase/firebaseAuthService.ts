@@ -92,17 +92,17 @@ export class FirebaseAuthService {
         throw error;
       }
     } else {
-      if (!fallbackEmail || !fallbackEmail.trim()) {
-        throw new Error('Vui lòng chọn hoặc nhập tài khoản Google để tiếp tục.');
+      if (fallbackEmail && fallbackEmail.trim()) {
+        const email = fallbackEmail.trim();
+        return {
+          uid: `google_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+          email,
+          displayName: fallbackName?.trim() || email.split('@')[0],
+          photoURL: fallbackAvatarUrl || DEFAULT_GOOGLE_AVATAR_URI,
+          idToken: `fb_mobile_token_${Date.now()}`,
+        };
       }
-      const email = fallbackEmail.trim();
-      return {
-        uid: `google_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        email,
-        displayName: fallbackName?.trim() || email.split('@')[0],
-        photoURL: fallbackAvatarUrl || DEFAULT_GOOGLE_AVATAR_URI,
-        idToken: `fb_mobile_token_${Date.now()}`,
-      };
+      return this.signInWithAnotherGoogleAccount();
     }
   }
 
@@ -139,7 +139,7 @@ export class FirebaseAuthService {
         throw error;
       }
     } else {
-      // Mobile: Cố gắng kết nối Google OAuth nếu có cấu hình redirect URI hợp lệ
+      // Mobile: Kích hoạt hệ thống Google OAuth (accounts.google.com/AccountChooser)
       const clientId =
         process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
         '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
@@ -171,25 +171,46 @@ export class FirebaseAuthService {
             });
             if (userInfoRes.ok) {
               const gUser = await userInfoRes.json();
-              return {
+              const profile: FirebaseUserProfile = {
                 uid: gUser.id || `g_${Date.now()}`,
                 email: gUser.email,
-                displayName: gUser.name || gUser.email.split('@')[0],
+                displayName: gUser.name || gUser.email?.split('@')[0] || 'Người dùng Google',
                 photoURL: gUser.picture || DEFAULT_GOOGLE_AVATAR_URI,
                 idToken: idToken || accessToken,
               };
+
+              // Đồng bộ phiên xác thực người dùng vào Firebase Auth
+              if (idToken) {
+                try {
+                  const credential = GoogleAuthProvider.credential(idToken, accessToken);
+                  const fbUserCred = await signInWithCredential(auth, credential);
+                  const fbUser = fbUserCred.user;
+                  profile.uid = fbUser.uid;
+                  profile.email = fbUser.email || profile.email;
+                  profile.displayName = fbUser.displayName || profile.displayName;
+                  profile.photoURL = fbUser.photoURL || profile.photoURL;
+                  profile.idToken = (await fbUser.getIdToken()) || profile.idToken;
+                } catch (credErr) {
+                  console.warn('[FirebaseAuthService] signInWithCredential warning:', credErr);
+                }
+              }
+
+              return profile;
             }
           }
-        } else if (authResult.type === 'cancel') {
+        } else if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
           throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
         }
       } catch (browserErr: any) {
-        if (browserErr.message?.includes('hủy') || browserErr.message?.includes('cancel')) {
+        if (
+          browserErr.message?.includes('hủy') ||
+          browserErr.message?.includes('cancel') ||
+          browserErr.message?.includes('dismiss')
+        ) {
           throw browserErr;
         }
       }
 
-      // Trả mã lỗi cụ thể để chuyển hướng mượt mà sang giao diện đăng nhập Google an toàn
       throw new Error('GOOGLE_OAUTH_REDIRECT_UNAVAILABLE');
     }
   }

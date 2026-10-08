@@ -79,7 +79,7 @@ class AuthRepository implements IAuthRepository {
 
   async loginWithGoogle(payload?: GoogleLoginPayload): Promise<AuthSession> {
     if (!payload?.email || !payload.email.trim()) {
-      throw new Error('Vui lòng cung cấp email tài khoản Google để đăng nhập.');
+      return this.loginWithAnotherGoogleAccount();
     }
 
     const targetEmail = payload.email.trim();
