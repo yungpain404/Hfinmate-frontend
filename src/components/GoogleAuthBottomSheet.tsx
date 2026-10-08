@@ -15,7 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
-import { makeRedirectUri, ResponseType } from 'expo-auth-session';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
@@ -73,19 +72,18 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
   // Device Google Accounts list (remembered accounts on device)
   const [accounts, setAccounts] = useState<GoogleAccountItem[]>([]);
 
-  // Google OAuth using useAuthRequest with makeRedirectUri({ scheme: 'hfinmate' })
+  // Google OAuth using useAuthRequest with explicit Expo Auth Proxy redirect URI
   const clientId =
     process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
     '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
 
+  const redirectUri = 'https://auth.expo.io/@yungpain404/HFinmate';
+
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId,
-    redirectUri: makeRedirectUri({
-      scheme: 'hfinmate',
-    }),
-    responseType: ResponseType.IdToken,
-    scopes: ['openid', 'profile', 'email'],
-    selectAccount: true,
+    redirectUri: redirectUri,
+    scopes: ['profile', 'email'],
+    responseType: 'id_token',
   });
 
   // Watch response and exchange credentials with Firebase Auth

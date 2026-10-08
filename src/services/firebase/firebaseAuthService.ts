@@ -9,7 +9,6 @@ import { Platform } from 'react-native';
 import { auth } from './firebaseConfig';
 
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -145,9 +144,7 @@ export class FirebaseAuthService {
         '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
 
       try {
-        const redirectUri = AuthSession.makeRedirectUri({
-          scheme: 'hfinmate',
-        });
+        const redirectUri = 'https://auth.expo.io/@yungpain404/HFinmate';
 
         const nonce = Math.random().toString(36).substring(2, 15);
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(

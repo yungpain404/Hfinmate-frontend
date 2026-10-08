@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
-import { makeRedirectUri, ResponseType } from 'expo-auth-session';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../config/firebase';
@@ -32,16 +31,13 @@ export function useGoogleAuthSession(options?: UseGoogleAuthSessionOptions) {
     process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
     '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
 
-  const redirectUri = makeRedirectUri({
-    scheme: 'hfinmate',
-  });
+  const redirectUri = 'https://auth.expo.io/@yungpain404/HFinmate';
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId,
     redirectUri,
-    responseType: ResponseType.IdToken,
-    selectAccount: true,
-    scopes: ['openid', 'profile', 'email'],
+    scopes: ['profile', 'email'],
+    responseType: 'id_token',
   });
 
   useEffect(() => {
