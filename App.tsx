@@ -6,6 +6,8 @@ import { RootNavigator } from './src/navigation';
 import { useAuthViewModel } from './src/viewmodels/useAuthViewModel';
 import { GoogleAuthBottomSheet } from './src/components';
 
+import { AuthProvider } from './src/context/AuthContext';
+
 export default function App() {
   const { initAuth, isGoogleModalVisible, hideGoogleModal } = useAuthViewModel();
 
@@ -15,19 +17,21 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <RootNavigator />
+      <AuthProvider>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+          <RootNavigator />
 
-        {/* Popup cạnh dưới ràng buộc đăng nhập Google khi lần đầu mở app / chưa đăng nhập */}
-        <GoogleAuthBottomSheet
-          visible={isGoogleModalVisible}
-          isMandatory={true}
-          onSuccess={() => {
-            hideGoogleModal();
-          }}
-        />
-      </NavigationContainer>
+          {/* Popup cạnh dưới ràng buộc đăng nhập Google khi lần đầu mở app / chưa đăng nhập */}
+          <GoogleAuthBottomSheet
+            visible={isGoogleModalVisible}
+            isMandatory={true}
+            onSuccess={() => {
+              hideGoogleModal();
+            }}
+          />
+        </NavigationContainer>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }
