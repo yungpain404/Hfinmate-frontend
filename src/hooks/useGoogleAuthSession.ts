@@ -8,6 +8,7 @@ import { auth } from '../config/firebase';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
 import { DEFAULT_GOOGLE_AVATAR_URI } from '../constants/avatar';
 import { firebaseAuthService } from '../services/firebase/firebaseAuthService';
+import { decodeGoogleIdToken } from '../utils/jwt';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -63,7 +64,17 @@ export function useGoogleAuthSession(options?: UseGoogleAuthSessionOptions) {
           let displayName = 'Người dùng Google';
           let email = '';
 
-          // 1. Fetch Google UserInfo if access_token is available
+          // 1. Directly decode Google ID Token payload (extract email, name, picture)
+          if (id_token) {
+            const jwtData = decodeGoogleIdToken(id_token);
+            if (jwtData) {
+              if (jwtData.email) email = jwtData.email;
+              if (jwtData.name) displayName = jwtData.name;
+              if (jwtData.picture) photoURL = jwtData.picture;
+            }
+          }
+
+          // 2. Fetch Google UserInfo if access_token is available
           if (access_token) {
             try {
               const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
@@ -80,7 +91,7 @@ export function useGoogleAuthSession(options?: UseGoogleAuthSessionOptions) {
             }
           }
 
-          // 2. Exchange credentials with Firebase Auth
+          // 3. Exchange credentials with Firebase Auth
           if (id_token) {
             try {
               const credential = GoogleAuthProvider.credential(id_token, access_token);

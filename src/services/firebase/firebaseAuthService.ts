@@ -13,6 +13,7 @@ import * as WebBrowser from 'expo-web-browser';
 WebBrowser.maybeCompleteAuthSession();
 
 import { DEFAULT_GOOGLE_AVATAR_URI } from '../../constants/avatar';
+import { decodeGoogleIdToken } from '../../utils/jwt';
 
 export interface FirebaseUserProfile {
   uid: string;
@@ -138,7 +139,7 @@ export class FirebaseAuthService {
         throw error;
       }
     } else {
-      // Mobile: Native Google Sign-In via @react-native-google-signin/google-signin
+      // Mobile: Native Google Sign-In via @react-native-google-signin/google-signin with Expo Go fallback
       const webClientId =
         process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
         '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
@@ -149,60 +150,156 @@ export class FirebaseAuthService {
         process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ||
         '205520143301-oiqi7d6d55ohama081kdlcmqpcnrfqpl.apps.googleusercontent.com';
 
+      let hasNativeModule = false;
       try {
-        const { GoogleSignin } = require('@react-native-google-signin/google-signin');
-        GoogleSignin.configure({
-          webClientId,
-          iosClientId,
-          scopes: ['profile', 'email'],
-          offlineAccess: true,
-        });
+        const { TurboModuleRegistry } = require('react-native');
+        hasNativeModule = !!TurboModuleRegistry?.get?.('RNGoogleSignin');
+      } catch {
+        hasNativeModule = false;
+      }
 
-        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-        const signinResult = await GoogleSignin.signIn();
+      if (hasNativeModule) {
+        try {
+          const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+          GoogleSignin.configure({
+            webClientId,
+            iosClientId,
+            scopes: ['profile', 'email'],
+            offlineAccess: true,
+          });
 
-        if (signinResult.type === 'success') {
-          const { idToken, user: gUser } = signinResult.data;
-          const profile: FirebaseUserProfile = {
-            uid: gUser.id || `g_${Date.now()}`,
-            email: gUser.email,
-            displayName: gUser.name || gUser.email.split('@')[0] || 'Người dùng Google',
-            photoURL: gUser.photo || DEFAULT_GOOGLE_AVATAR_URI,
-            idToken: idToken || undefined,
-          };
+          await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+          const signinResult = await GoogleSignin.signIn();
 
-          // Đồng bộ phiên xác thực người dùng vào Firebase Auth
-          if (idToken) {
-            try {
-              const credential = GoogleAuthProvider.credential(idToken);
-              const fbUserCred = await signInWithCredential(auth, credential);
-              const fbUser = fbUserCred.user;
-              profile.uid = fbUser.uid;
-              profile.email = fbUser.email || profile.email;
-              profile.displayName = fbUser.displayName || profile.displayName;
-              profile.photoURL = fbUser.photoURL || profile.photoURL;
-              profile.idToken = (await fbUser.getIdToken()) || profile.idToken;
-            } catch (credErr) {
-              console.warn('[FirebaseAuthService] signInWithCredential warning:', credErr);
+          if (signinResult.type === 'success') {
+            const { idToken, user: gUser } = signinResult.data;
+            const profile: FirebaseUserProfile = {
+              uid: gUser.id || `g_${Date.now()}`,
+              email: gUser.email,
+              displayName: gUser.name || gUser.email.split('@')[0] || 'Người dùng Google',
+              photoURL: gUser.photo || DEFAULT_GOOGLE_AVATAR_URI,
+              idToken: idToken || undefined,
+            };
+
+            // Đồng bộ phiên xác thực người dùng vào Firebase Auth
+            if (idToken) {
+              try {
+                const credential = GoogleAuthProvider.credential(idToken);
+                const fbUserCred = await signInWithCredential(auth, credential);
+                const fbUser = fbUserCred.user;
+                profile.uid = fbUser.uid;
+                profile.email = fbUser.email || profile.email;
+                profile.displayName = fbUser.displayName || profile.displayName;
+                profile.photoURL = fbUser.photoURL || profile.photoURL;
+                profile.idToken = (await fbUser.getIdToken()) || profile.idToken;
+              } catch (credErr) {
+                console.warn('[FirebaseAuthService] signInWithCredential warning:', credErr);
+              }
             }
+
+            return profile;
+          } else {
+            throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
+          }
+        } catch (nativeErr: any) {
+          if (
+            nativeErr.code === 'SIGN_IN_CANCELLED' ||
+            nativeErr.message?.includes('hủy') ||
+            nativeErr.message?.includes('cancel') ||
+            nativeErr.message?.includes('dismiss')
+          ) {
+            throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
           }
 
-          return profile;
-        } else {
-          throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
+          console.warn('[FirebaseAuthService] Native Google Sign-In error:', nativeErr);
+          throw nativeErr;
         }
-      } catch (nativeErr: any) {
-        if (
-          nativeErr.code === 'SIGN_IN_CANCELLED' ||
-          nativeErr.message?.includes('hủy') ||
-          nativeErr.message?.includes('cancel') ||
-          nativeErr.message?.includes('dismiss')
-        ) {
-          throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
+      } else {
+        // Fallback for Expo Go (WebBrowser AuthSession proxy)
+        try {
+          const redirectUri = 'https://auth.expo.io/@yungpain404/HFinmate';
+          const nonce = Math.random().toString(36).substring(2, 15);
+          const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+            webClientId
+          )}&redirect_uri=${encodeURIComponent(
+            redirectUri
+          )}&response_type=${encodeURIComponent('token id_token')}&scope=${encodeURIComponent(
+            'openid profile email'
+          )}&prompt=select_account&nonce=${encodeURIComponent(nonce)}`;
+
+          const authResult = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+          if (authResult.type === 'success' && authResult.url) {
+            const tokenMatch = authResult.url.match(/[#?&]access_token=([^&]+)/);
+            const idTokenMatch = authResult.url.match(/[#?&]id_token=([^&]+)/);
+            const accessToken = tokenMatch ? decodeURIComponent(tokenMatch[1]) : undefined;
+            const idToken = idTokenMatch ? decodeURIComponent(idTokenMatch[1]) : undefined;
+
+            let email = '';
+            let displayName = 'Người dùng Google';
+            let photoURL = DEFAULT_GOOGLE_AVATAR_URI;
+
+            // Giải mã trực tiếp payload id_token (JWT)
+            if (idToken) {
+              const jwtData = decodeGoogleIdToken(idToken);
+              if (jwtData) {
+                if (jwtData.email) email = jwtData.email;
+                if (jwtData.name) displayName = jwtData.name;
+                if (jwtData.picture) photoURL = jwtData.picture;
+              }
+            }
+
+            if (idToken) {
+              try {
+                const credential = GoogleAuthProvider.credential(idToken, accessToken);
+                const fbUserCred = await signInWithCredential(auth, credential);
+                const fbUser = fbUserCred.user;
+                photoURL = fbUser.photoURL || photoURL;
+                displayName = fbUser.displayName || displayName;
+                email = fbUser.email || email;
+              } catch (credErr) {
+                console.warn('[FirebaseAuthService] Firebase credential warning:', credErr);
+              }
+            }
+
+            if (accessToken && (!email || photoURL === DEFAULT_GOOGLE_AVATAR_URI)) {
+              try {
+                const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                });
+                if (res.ok) {
+                  const gUser = await res.json();
+                  email = gUser.email || email;
+                  displayName = gUser.name || displayName;
+                  photoURL = gUser.picture || photoURL;
+                }
+              } catch {}
+            }
+
+            if (email) {
+              return {
+                uid: `google_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                email,
+                displayName,
+                photoURL,
+                idToken: idToken || accessToken,
+              };
+            }
+          } else if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
+            throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
+          }
+        } catch (browserErr: any) {
+          if (
+            browserErr.message?.includes('hủy') ||
+            browserErr.message?.includes('cancel') ||
+            browserErr.message?.includes('dismiss')
+          ) {
+            throw browserErr;
+          }
+          console.warn('[FirebaseAuthService] Browser session error:', browserErr);
+          throw browserErr;
         }
 
-        console.warn('[FirebaseAuthService] Native Google Sign-In error:', nativeErr);
-        throw nativeErr;
+        throw new Error('Đăng nhập Google chưa hoàn tất.');
       }
     }
   }
