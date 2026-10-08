@@ -12,8 +12,11 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../context/AuthContext';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
+
+WebBrowser.maybeCompleteAuthSession();
 
 // Authentic Google Multi-Color "G" Icon
 const GoogleIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (

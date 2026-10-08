@@ -32,24 +32,13 @@ export function useGoogleAuthSession(options?: UseGoogleAuthSessionOptions) {
     process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
     '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
 
-  const redirectUri =
-    makeRedirectUri({
-      // Use proxy for Expo Go to match https://auth.expo.io/@yungpain404/HFinmate
-    }) || EXPO_PROXY_REDIRECT_URI;
-
-  const targetRedirectUri =
-    Platform.OS === 'web'
-      ? undefined
-      : redirectUri.startsWith('https://auth.expo.io')
-      ? redirectUri
-      : EXPO_PROXY_REDIRECT_URI;
+  const redirectUri = makeRedirectUri({
+    scheme: 'hfinmate',
+  });
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId,
-    webClientId: clientId,
-    iosClientId: clientId,
-    androidClientId: clientId,
-    redirectUri: targetRedirectUri,
+    redirectUri,
     responseType: ResponseType.IdToken,
     selectAccount: true,
     scopes: ['openid', 'profile', 'email'],

@@ -8,15 +8,23 @@ import {
   TouchableWithoutFeedback,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import { makeRedirectUri, ResponseType } from 'expo-auth-session';
+import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { auth } from '../config/firebase';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
 import { DEFAULT_GOOGLE_AVATAR_URI } from '../constants/avatar';
 import { GoogleAccountItem } from './GoogleAccountPickerModal';
 import { UserAvatar } from './UserAvatar';
-import { useGoogleAuthSession } from '../hooks/useGoogleAuthSession';
+
+// Complete auth session at top-level
+WebBrowser.maybeCompleteAuthSession();
 
 interface GoogleAuthBottomSheetProps {
   visible: boolean;
@@ -64,6 +72,110 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
 
   // Device Google Accounts list (remembered accounts on device)
   const [accounts, setAccounts] = useState<GoogleAccountItem[]>([]);
+
+  // Google OAuth using useAuthRequest with makeRedirectUri({ scheme: 'hfinmate' })
+  const clientId =
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
+    '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId,
+    redirectUri: makeRedirectUri({
+      scheme: 'hfinmate',
+    }),
+    responseType: ResponseType.IdToken,
+    scopes: ['openid', 'profile', 'email'],
+    selectAccount: true,
+  });
+
+  // Watch response and exchange credentials with Firebase Auth
+  useEffect(() => {
+    async function handleAuthResponse() {
+      if (response?.type === 'success') {
+        try {
+          setSubmitting(true);
+          const { id_token, access_token } = response.params;
+
+          let photoURL = DEFAULT_GOOGLE_AVATAR_URI;
+          let displayName = 'Người dùng Google';
+          let email = '';
+
+          // 1. Sign in to Firebase Auth using GoogleAuthProvider.credential(id_token)
+          if (id_token) {
+            try {
+              const credential = GoogleAuthProvider.credential(id_token, access_token);
+              const fbUserCred = await signInWithCredential(auth, credential);
+              const fbUser = fbUserCred.user;
+              photoURL = fbUser.photoURL || photoURL;
+              displayName = fbUser.displayName || fbUser.email?.split('@')[0] || displayName;
+              email = fbUser.email || '';
+            } catch (credErr) {
+              console.warn('[GoogleAuthBottomSheet] Firebase credential exchange warning:', credErr);
+            }
+          }
+
+          // 2. Fetch UserInfo if photoURL or email not yet obtained
+          if (access_token && (!email || photoURL === DEFAULT_GOOGLE_AVATAR_URI)) {
+            try {
+              const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+                headers: { Authorization: `Bearer ${access_token}` },
+              });
+              if (res.ok) {
+                const info = await res.json();
+                photoURL = info.picture || photoURL;
+                displayName = info.name || displayName;
+                email = info.email || email;
+              }
+            } catch (fetchErr) {
+              console.warn('[GoogleAuthBottomSheet] UserInfo fetch warning:', fetchErr);
+            }
+          }
+
+          if (email) {
+            const ok = await loginWithGoogle({
+              email,
+              name: displayName,
+              avatarUrl: photoURL,
+              idToken: id_token || access_token,
+            });
+
+            if (ok) {
+              await Promise.all([
+                AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_EMAIL, email),
+                AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_NAME, displayName),
+                AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_AVATAR, photoURL),
+              ]);
+
+              const newAcc: GoogleAccountItem = {
+                id: `acc_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                name: displayName,
+                email,
+                avatarUrl: photoURL,
+              };
+              const updated = [
+                newAcc,
+                ...accounts.filter((a) => a.email.toLowerCase() !== email.toLowerCase()),
+              ];
+              setAccounts(updated);
+              await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(updated));
+
+              setIsPickerVisible(false);
+              onSuccess?.();
+            }
+          }
+        } catch (err: any) {
+          console.error('[GoogleAuthBottomSheet] Auth response error:', err);
+          Alert.alert('Đăng nhập Google', err.message || 'Lỗi khi đồng bộ tài khoản Google.');
+        } finally {
+          setSubmitting(false);
+        }
+      } else if (response?.type === 'cancel' || response?.type === 'dismiss') {
+        setSubmitting(false);
+      }
+    }
+
+    handleAuthResponse();
+  }, [response]);
 
   useEffect(() => {
     if (visible) {
@@ -190,33 +302,20 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     }
   };
 
-  const { signIn: triggerGoogleOAuth, submitting: oauthSubmitting } = useGoogleAuthSession({
-    onSuccess: async () => {
-      const [lastEmail, lastName, lastAvatar] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_EMAIL),
-        AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_NAME),
-        AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_AVATAR),
-      ]);
-
-      if (lastEmail) {
-        const newAcc: GoogleAccountItem = {
-          id: `acc_${lastEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-          name: lastName?.trim() || lastEmail.split('@')[0],
-          email: lastEmail.trim(),
-          avatarUrl: lastAvatar || DEFAULT_GOOGLE_AVATAR_URI,
-        };
-        const updated = [
-          newAcc,
-          ...accounts.filter((a) => a.email.toLowerCase() !== lastEmail.toLowerCase()),
-        ];
-        setAccounts(updated);
-        await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(updated));
+  // 2. Trigger native Google Sign-In & system account chooser flow via promptAsync
+  const handleTriggerGoogleOAuth = async () => {
+    try {
+      setSubmitting(true);
+      if (Platform.OS === 'web') {
+        const ok = await loginWithAnotherGoogleAccount();
+        if (ok) {
+          setIsPickerVisible(false);
+          onSuccess?.();
+        }
+      } else {
+        await promptAsync();
       }
-
-      setIsPickerVisible(false);
-      onSuccess?.();
-    },
-    onError: (err) => {
+    } catch (err: any) {
       if (
         err.message?.includes('hủy') ||
         err.message?.includes('cancel') ||
@@ -229,12 +328,9 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
         'Đăng nhập Google',
         err.message || 'Chưa thể hoàn tất đăng nhập bằng tài khoản Google.'
       );
-    },
-  });
-
-  // 2. Trigger native Google Sign-In & system account chooser flow via Expo Auth Proxy
-  const handleTriggerGoogleOAuth = async () => {
-    await triggerGoogleOAuth();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleBackdropPress = () => {
@@ -249,7 +345,7 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     }
   };
 
-  const isBusy = isLoading || submitting || oauthSubmitting;
+  const isBusy = isLoading || submitting;
 
   return (
     <Modal

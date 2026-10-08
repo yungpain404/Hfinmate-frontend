@@ -1,6 +1,9 @@
+import * as WebBrowser from 'expo-web-browser';
 import { registerRootComponent } from 'expo';
-
 import App from './App';
+
+// Immediately complete auth session at top-level entry
+WebBrowser.maybeCompleteAuthSession();
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,

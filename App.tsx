@@ -1,3 +1,4 @@
+import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect } from 'react';
 import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -7,6 +8,8 @@ import { RootNavigator } from './src/navigation';
 import { useAuthViewModel } from './src/viewmodels/useAuthViewModel';
 import { GoogleAuthBottomSheet } from './src/components';
 import { AuthProvider } from './src/context/AuthContext';
+
+WebBrowser.maybeCompleteAuthSession();
 
 function MainAppContent() {
   const { user, isLoading, initAuth, isGoogleModalVisible, hideGoogleModal } =
