@@ -138,77 +138,65 @@ export class FirebaseAuthService {
         throw error;
       }
     } else {
-      // Mobile: Kích hoạt hệ thống Google OAuth (accounts.google.com/AccountChooser)
+      // Mobile: Native Google Sign-In via @react-native-google-signin/google-signin
       const clientId =
         process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
         '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
 
       try {
-        const redirectUri = 'https://auth.expo.io/@yungpain404/HFinmate';
+        const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+        GoogleSignin.configure({
+          webClientId: clientId,
+          scopes: ['profile', 'email'],
+          offlineAccess: true,
+        });
 
-        const nonce = Math.random().toString(36).substring(2, 15);
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
-          clientId
-        )}&redirect_uri=${encodeURIComponent(
-          redirectUri
-        )}&response_type=${encodeURIComponent('token id_token')}&scope=${encodeURIComponent(
-          'openid profile email'
-        )}&prompt=select_account&nonce=${encodeURIComponent(nonce)}`;
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const signinResult = await GoogleSignin.signIn();
 
-        const authResult = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-        if (authResult.type === 'success' && authResult.url) {
-          const tokenMatch = authResult.url.match(/[#?&]access_token=([^&]+)/);
-          const idTokenMatch = authResult.url.match(/[#?&]id_token=([^&]+)/);
-          const accessToken = tokenMatch ? decodeURIComponent(tokenMatch[1]) : undefined;
-          const idToken = idTokenMatch ? decodeURIComponent(idTokenMatch[1]) : undefined;
+        if (signinResult.type === 'success') {
+          const { idToken, user: gUser } = signinResult.data;
+          const profile: FirebaseUserProfile = {
+            uid: gUser.id || `g_${Date.now()}`,
+            email: gUser.email,
+            displayName: gUser.name || gUser.email.split('@')[0] || 'Người dùng Google',
+            photoURL: gUser.photo || DEFAULT_GOOGLE_AVATAR_URI,
+            idToken: idToken || undefined,
+          };
 
-          if (accessToken) {
-            const userInfoRes = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            });
-            if (userInfoRes.ok) {
-              const gUser = await userInfoRes.json();
-              const profile: FirebaseUserProfile = {
-                uid: gUser.id || `g_${Date.now()}`,
-                email: gUser.email,
-                displayName: gUser.name || gUser.email?.split('@')[0] || 'Người dùng Google',
-                photoURL: gUser.picture || DEFAULT_GOOGLE_AVATAR_URI,
-                idToken: idToken || accessToken,
-              };
-
-              // Đồng bộ phiên xác thực người dùng vào Firebase Auth
-              if (idToken) {
-                try {
-                  const credential = GoogleAuthProvider.credential(idToken, accessToken);
-                  const fbUserCred = await signInWithCredential(auth, credential);
-                  const fbUser = fbUserCred.user;
-                  profile.uid = fbUser.uid;
-                  profile.email = fbUser.email || profile.email;
-                  profile.displayName = fbUser.displayName || profile.displayName;
-                  profile.photoURL = fbUser.photoURL || profile.photoURL;
-                  profile.idToken = (await fbUser.getIdToken()) || profile.idToken;
-                } catch (credErr) {
-                  console.warn('[FirebaseAuthService] signInWithCredential warning:', credErr);
-                }
-              }
-
-              return profile;
+          // Đồng bộ phiên xác thực người dùng vào Firebase Auth
+          if (idToken) {
+            try {
+              const credential = GoogleAuthProvider.credential(idToken);
+              const fbUserCred = await signInWithCredential(auth, credential);
+              const fbUser = fbUserCred.user;
+              profile.uid = fbUser.uid;
+              profile.email = fbUser.email || profile.email;
+              profile.displayName = fbUser.displayName || profile.displayName;
+              profile.photoURL = fbUser.photoURL || profile.photoURL;
+              profile.idToken = (await fbUser.getIdToken()) || profile.idToken;
+            } catch (credErr) {
+              console.warn('[FirebaseAuthService] signInWithCredential warning:', credErr);
             }
           }
-        } else if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
+
+          return profile;
+        } else {
           throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
         }
-      } catch (browserErr: any) {
+      } catch (nativeErr: any) {
         if (
-          browserErr.message?.includes('hủy') ||
-          browserErr.message?.includes('cancel') ||
-          browserErr.message?.includes('dismiss')
+          nativeErr.code === 'SIGN_IN_CANCELLED' ||
+          nativeErr.message?.includes('hủy') ||
+          nativeErr.message?.includes('cancel') ||
+          nativeErr.message?.includes('dismiss')
         ) {
-          throw browserErr;
+          throw new Error('Đăng nhập Google đã bị hủy bởi người dùng.');
         }
-      }
 
-      throw new Error('GOOGLE_OAUTH_REDIRECT_UNAVAILABLE');
+        console.warn('[FirebaseAuthService] Native Google Sign-In error:', nativeErr);
+        throw nativeErr;
+      }
     }
   }
 
@@ -224,6 +212,10 @@ export class FirebaseAuthService {
    */
   async signOut(): Promise<void> {
     try {
+      try {
+        const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+        await GoogleSignin.signOut();
+      } catch {}
       await firebaseSignOut(auth);
     } catch (err) {
       console.warn('[FirebaseAuthService] Sign out warning:', err);

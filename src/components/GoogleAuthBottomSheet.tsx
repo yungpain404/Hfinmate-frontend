@@ -300,18 +300,37 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     }
   };
 
-  // 2. Trigger native Google Sign-In & system account chooser flow via promptAsync
+  // 2. Trigger native Google Sign-In & system account chooser flow
   const handleTriggerGoogleOAuth = async () => {
     try {
       setSubmitting(true);
-      if (Platform.OS === 'web') {
-        const ok = await loginWithAnotherGoogleAccount();
-        if (ok) {
-          setIsPickerVisible(false);
-          onSuccess?.();
+      const ok = await loginWithAnotherGoogleAccount();
+      if (ok) {
+        const currentUser = auth.currentUser;
+        if (currentUser?.email) {
+          const email = currentUser.email;
+          const displayName = currentUser.displayName || email.split('@')[0];
+          const photoURL = currentUser.photoURL || DEFAULT_GOOGLE_AVATAR_URI;
+          await Promise.all([
+            AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_EMAIL, email),
+            AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_NAME, displayName),
+            AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_AVATAR, photoURL),
+          ]);
+          const newAcc: GoogleAccountItem = {
+            id: `acc_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+            name: displayName,
+            email,
+            avatarUrl: photoURL,
+          };
+          const updated = [
+            newAcc,
+            ...accounts.filter((a) => a.email.toLowerCase() !== email.toLowerCase()),
+          ];
+          setAccounts(updated);
+          await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(updated));
         }
-      } else {
-        await promptAsync();
+        setIsPickerVisible(false);
+        onSuccess?.();
       }
     } catch (err: any) {
       if (
