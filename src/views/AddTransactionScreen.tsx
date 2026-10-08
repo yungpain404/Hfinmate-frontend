@@ -89,7 +89,12 @@ export const AddTransactionScreen: React.FC = () => {
           style={styles.avatarButton}
           onPress={() => navigation.navigate('Profile')}
         >
-          <UserAvatar avatarUrl={user?.avatarUrl} size={34} />
+          <UserAvatar
+            avatarUrl={user?.avatarUrl}
+            name={user?.name}
+            email={user?.email}
+            size={34}
+          />
         </TouchableOpacity>
       </View>
 

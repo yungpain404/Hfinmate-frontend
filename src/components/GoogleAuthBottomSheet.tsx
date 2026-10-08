@@ -19,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
 import { DEFAULT_GOOGLE_AVATAR_URI } from '../constants/avatar';
 import { GoogleAccountItem } from './GoogleAccountPickerModal';
+import { UserAvatar } from './UserAvatar';
 
 interface GoogleAuthBottomSheetProps {
   visible: boolean;
@@ -337,10 +338,11 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
                             disabled={isLoading || submitting}
                             onPress={() => handleSelectAccount(acc)}
                           >
-                            <Image
-                              source={{ uri: avatarSrc }}
-                              style={styles.avatarImage}
-                              resizeMode="cover"
+                            <UserAvatar
+                              avatarUrl={acc.avatarUrl}
+                              name={acc.name}
+                              email={acc.email}
+                              size={44}
                             />
 
                             <View style={styles.accountInfoCol}>

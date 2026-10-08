@@ -39,7 +39,12 @@ export const MainTopHeader: React.FC = () => {
           style={styles.avatarTouchArea}
           onPress={() => navigation.navigate('Profile')}
         >
-          <UserAvatar avatarUrl={user?.avatarUrl} size={34} />
+          <UserAvatar
+            avatarUrl={user?.avatarUrl}
+            name={user?.name}
+            email={user?.email}
+            size={34}
+          />
         </TouchableOpacity>
       </View>
     </View>

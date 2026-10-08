@@ -70,10 +70,10 @@ export const ProfileScreen: React.FC = () => {
         <Card style={styles.userCard} padding="lg">
           <UserAvatar
             avatarUrl={user?.avatarUrl}
+            name={user?.name}
+            email={user?.email}
             size={60}
             style={{ marginRight: 16 }}
-            backgroundColor={user?.avatarUrl ? '#EAF5EF' : theme.colors.primary}
-            iconColor="#FFFFFF"
           />
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.name || 'Chưa đăng nhập'}</Text>
