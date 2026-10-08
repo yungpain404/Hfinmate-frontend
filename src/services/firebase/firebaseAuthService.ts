@@ -139,14 +139,17 @@ export class FirebaseAuthService {
       }
     } else {
       // Mobile: Native Google Sign-In via @react-native-google-signin/google-signin
-      const clientId =
+      const webClientId =
         process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
         '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
+      const androidClientId =
+        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
+        '205520143301-c3hegipsng8pelkjiclchclb0birr77u.apps.googleusercontent.com';
 
       try {
         const { GoogleSignin } = require('@react-native-google-signin/google-signin');
         GoogleSignin.configure({
-          webClientId: clientId,
+          webClientId,
           scopes: ['profile', 'email'],
           offlineAccess: true,
         });

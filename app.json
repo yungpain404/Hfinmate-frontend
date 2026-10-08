@@ -41,7 +41,8 @@
     "extra": {
       "eas": {
         "projectId": "344526cf-682b-44b7-bcd6-fba0d7700118"
-      }
+      },
+      "googleAndroidClientId": "205520143301-c3hegipsng8pelkjiclchclb0birr77u.apps.googleusercontent.com"
     }
   }
 }

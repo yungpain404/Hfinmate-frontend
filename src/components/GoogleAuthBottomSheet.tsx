@@ -77,10 +77,15 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
     '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
 
+  const androidClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
+    '205520143301-c3hegipsng8pelkjiclchclb0birr77u.apps.googleusercontent.com';
+
   const redirectUri = 'https://auth.expo.io/@yungpain404/HFinmate';
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId,
+    androidClientId,
     redirectUri: redirectUri,
     scopes: ['profile', 'email'],
     responseType: 'id_token',
