@@ -6,6 +6,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList } from '../navigation/types';
 import { theme } from '../theme';
+import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
+import { UserAvatar } from './UserAvatar';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -17,6 +19,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export const MainTopHeader: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
+  const { user } = useAuthViewModel();
 
   return (
     <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
@@ -33,10 +36,10 @@ export const MainTopHeader: React.FC = () => {
 
         <TouchableOpacity
           activeOpacity={0.8}
-          style={styles.avatarButton}
+          style={styles.avatarTouchArea}
           onPress={() => navigation.navigate('Profile')}
         >
-          <Text style={styles.avatarInitial}>M</Text>
+          <UserAvatar avatarUrl={user?.avatarUrl} size={34} />
         </TouchableOpacity>
       </View>
     </View>
@@ -68,17 +71,7 @@ const styles = StyleSheet.create({
     color: '#17271F',
     marginLeft: 6,
   },
-  avatarButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#EAF5EF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1A6A4C',
+  avatarTouchArea: {
+    padding: 2,
   },
 });

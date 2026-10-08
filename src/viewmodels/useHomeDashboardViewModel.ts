@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { HomeDashboardData } from '../models/dashboard.model';
 import { dashboardRepository } from '../services/repositories/dashboardRepository';
+import { INITIAL_DASHBOARD_DATA } from '../services/mock/mockData';
 import { formatVND } from './useWalletViewModel';
 
 export function formatVNDNumber(amount: number): string {
@@ -12,8 +13,8 @@ export function formatVNDNumber(amount: number): string {
  * Strictly encapsulates state and business formatting for the first screen (Dashboard)
  */
 export function useHomeDashboardViewModel() {
-  const [data, setData] = useState<HomeDashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [data, setData] = useState<HomeDashboardData | null>(INITIAL_DASHBOARD_DATA);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,8 +22,6 @@ export function useHomeDashboardViewModel() {
     try {
       if (isRefresh) {
         setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
       }
       setError(null);
       const res = await dashboardRepository.getDashboardData();

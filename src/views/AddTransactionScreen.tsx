@@ -17,7 +17,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { useDailyExpenseViewModel } from '../viewmodels/useDailyExpenseViewModel';
-import { DatePickerModal, CategoryPickerModal } from '../components';
+import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
+import { DatePickerModal, CategoryPickerModal, UserAvatar } from '../components';
 import { getCategoryByName } from '../models/expenseCategory.model';
 import { theme } from '../theme';
 
@@ -26,6 +27,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export const AddTransactionScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
+  const { user } = useAuthViewModel();
   const [isDatePickerVisible, setIsDatePickerVisible] = useState<boolean>(false);
   const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState<boolean>(false);
   const [pickerItemId, setPickerItemId] = useState<string | null>(null);
@@ -87,7 +89,7 @@ export const AddTransactionScreen: React.FC = () => {
           style={styles.avatarButton}
           onPress={() => navigation.navigate('Profile')}
         >
-          <Text style={styles.avatarInitial}>M</Text>
+          <UserAvatar avatarUrl={user?.avatarUrl} size={34} />
         </TouchableOpacity>
       </View>
 
@@ -370,17 +372,7 @@ const styles = StyleSheet.create({
     color: '#1A6A4C',
   },
   avatarButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#EAF5EF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1A6A4C',
+    padding: 2,
   },
   keyboardView: {
     flex: 1,

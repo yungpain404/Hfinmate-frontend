@@ -9,9 +9,9 @@ const currentYear = now.getFullYear();
 const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
 export const INITIAL_USER: User = {
-  id: 'usr_001',
-  name: 'yungpain404',
-  email: 'nguyenngochau092@gmail.com',
+  id: 'usr_guest',
+  name: 'Người dùng',
+  email: '',
   preferredCurrency: 'VND',
 };
 

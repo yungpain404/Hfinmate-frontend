@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -6,13 +6,19 @@ import {
   StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  TextInput,
+  Image,
   ActivityIndicator,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
-import { theme } from '../theme';
+import { DEFAULT_GOOGLE_AVATAR_URI } from '../constants/avatar';
+import { GoogleAccountItem } from './GoogleAccountPickerModal';
 
 interface GoogleAuthBottomSheetProps {
   visible: boolean;
@@ -22,7 +28,7 @@ interface GoogleAuthBottomSheetProps {
 }
 
 // Authentic Google Multi-Color "G" Icon
-const GoogleIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+const GoogleIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
     <Path
       fill="#4285F4"
@@ -43,36 +49,194 @@ const GoogleIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
   </Svg>
 );
 
+const STORAGE_KEY_SAVED_ACCOUNTS = 'hfinmate_saved_device_accounts';
+const STORAGE_KEY_LAST_GOOGLE_EMAIL = 'hfinmate_last_google_email';
+const STORAGE_KEY_LAST_GOOGLE_NAME = 'hfinmate_last_google_name';
+const STORAGE_KEY_LAST_GOOGLE_AVATAR = 'hfinmate_last_google_avatar';
+
 export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
   visible,
   isMandatory = true,
   onSuccess,
   onClose,
 }) => {
-  const { loginWithGoogle, isLoading } = useAuthViewModel();
+  const { loginWithGoogle, loginWithAnotherGoogleAccount, isLoading } = useAuthViewModel();
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [isPickerVisible, setIsPickerVisible] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<'picker' | 'signin'>('picker');
 
-  const handleGoogleSignIn = async (isDemo = false) => {
+  // Input states for Google Sign-In
+  const [inputEmail, setInputEmail] = useState<string>('');
+  const [inputName, setInputName] = useState<string>('');
+
+  // Device Google Accounts list (loaded dynamically from device storage)
+  const [accounts, setAccounts] = useState<GoogleAccountItem[]>([]);
+
+  useEffect(() => {
+    if (visible) {
+      setIsPickerVisible(true);
+
+      // Load remembered accounts from device storage
+      AsyncStorage.getItem(STORAGE_KEY_SAVED_ACCOUNTS)
+        .then(async (raw) => {
+          let list: GoogleAccountItem[] = [];
+          if (raw) {
+            try {
+              list = JSON.parse(raw);
+            } catch {
+              list = [];
+            }
+          }
+
+          if (list.length === 0) {
+            const [lastEmail, lastName, lastAvatar] = await Promise.all([
+              AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_EMAIL),
+              AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_NAME),
+              AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_AVATAR),
+            ]);
+
+            if (lastEmail && lastEmail.trim().length > 0) {
+              const savedAcc: GoogleAccountItem = {
+                id: `acc_${Date.now()}`,
+                name: lastName?.trim() || lastEmail.split('@')[0],
+                email: lastEmail.trim(),
+                avatarUrl: lastAvatar || DEFAULT_GOOGLE_AVATAR_URI,
+              };
+              list = [savedAcc];
+              await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(list));
+            }
+          }
+
+          setAccounts(list);
+          if (list.length > 0) {
+            setViewMode('picker');
+          } else {
+            setViewMode('signin');
+          }
+        })
+        .catch(() => {
+          setAccounts([]);
+          setViewMode('signin');
+        });
+    }
+  }, [visible]);
+
+  // 1. Khi chọn tài khoản đang có trên máy: Đăng nhập trực tiếp, đồng bộ ngay lập tức
+  const handleSelectAccount = async (account: GoogleAccountItem) => {
     try {
       setSubmitting(true);
-      const payload = isDemo
-        ? {
-            email: 'demo.google@hfinmate.com',
-            name: 'Người dùng Thử nghiệm (Firebase)',
-          }
-        : undefined;
+      const ok = await loginWithGoogle({
+        email: account.email,
+        name: account.name,
+        avatarUrl: account.avatarUrl || DEFAULT_GOOGLE_AVATAR_URI,
+      });
 
-      const ok = await loginWithGoogle(payload);
       if (ok) {
+        await Promise.all([
+          AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_EMAIL, account.email),
+          AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_NAME, account.name),
+          AsyncStorage.setItem(
+            STORAGE_KEY_LAST_GOOGLE_AVATAR,
+            account.avatarUrl || DEFAULT_GOOGLE_AVATAR_URI
+          ),
+        ]);
+        setIsPickerVisible(false);
         onSuccess?.();
       } else {
         Alert.alert(
-          'Thông báo',
-          'Đăng nhập Google chưa hoàn tất hoặc đã bị hủy. Vui lòng thử lại.'
+          'Đăng nhập chưa hoàn tất',
+          'Không thể kết nối đến máy chủ đồng bộ. Vui lòng kiểm tra mạng và thử lại.'
         );
       }
-    } catch (err) {
-      Alert.alert('Lỗi đăng nhập', (err as Error).message || 'Có lỗi xảy ra khi xác thực Google.');
+    } catch (err: any) {
+      Alert.alert(
+        'Lỗi đăng nhập',
+        err.message || 'Có lỗi xảy ra khi xác thực tài khoản Google.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // 2. Khi ấn vào "Sử dụng một tài khoản khác"
+  const handleUseAnotherAccount = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        setSubmitting(true);
+        const ok = await loginWithAnotherGoogleAccount();
+        if (ok) {
+          setIsPickerVisible(false);
+          onSuccess?.();
+        }
+      } catch (err: any) {
+        if (err.message?.includes('hủy')) {
+          return;
+        }
+        Alert.alert(
+          'Đăng nhập Google',
+          err.message || 'Chưa thể hoàn tất đăng nhập bằng tài khoản khác.'
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    } else {
+      // Trên iOS/Android: Chuyển sang màn hình nhập tài khoản Google để tránh lỗi redirect OAuth
+      setInputEmail('');
+      setInputName('');
+      setViewMode('signin');
+    }
+  };
+
+  // 3. Đăng nhập với tài khoản Google mới
+  const handleSubmitNewAccount = async () => {
+    const email = inputEmail.trim().toLowerCase();
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      Alert.alert('Email không hợp lệ', 'Vui lòng nhập địa chỉ email Google hợp lệ (ví dụ: name@gmail.com).');
+      return;
+    }
+
+    const name = inputName.trim() || email.split('@')[0];
+    const avatarUrl = DEFAULT_GOOGLE_AVATAR_URI;
+
+    try {
+      setSubmitting(true);
+      const ok = await loginWithGoogle({
+        email,
+        name,
+        avatarUrl,
+      });
+
+      if (ok) {
+        // Lưu tài khoản mới vào danh sách thiết bị
+        const updated = [...accounts.filter((a) => a.email.toLowerCase() !== email)];
+        const newAcc: GoogleAccountItem = {
+          id: `acc_${Date.now()}`,
+          name,
+          email,
+          avatarUrl,
+        };
+        updated.unshift(newAcc);
+        setAccounts(updated);
+
+        await Promise.all([
+          AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(updated)),
+          AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_EMAIL, email),
+          AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_NAME, name),
+          AsyncStorage.setItem(STORAGE_KEY_LAST_GOOGLE_AVATAR, avatarUrl),
+        ]);
+
+        setIsPickerVisible(false);
+        setInputEmail('');
+        setInputName('');
+        onSuccess?.();
+      } else {
+        Alert.alert(
+          'Đăng nhập chưa hoàn tất',
+          'Không thể kết nối đến máy chủ đồng bộ. Vui lòng thử lại.'
+        );
+      }
+    } catch (err: any) {
+      Alert.alert('Lỗi đăng nhập', err.message || 'Không thể xác thực tài khoản Google.');
     } finally {
       setSubmitting(false);
     }
@@ -82,7 +246,7 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     if (isMandatory) {
       Alert.alert(
         'Yêu cầu đăng nhập',
-        'Vui lòng đăng nhập bằng Google để kích hoạt tính năng đồng bộ và sao lưu sổ chi tiêu HFinmate an toàn.',
+        'Vui lòng đăng nhập tài khoản Google để kích hoạt tính năng đồng bộ thu chi trên điện thoại và laptop.',
         [{ text: 'Đã hiểu', style: 'default' }]
       );
     } else {
@@ -94,114 +258,190 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       statusBarTranslucent
       onRequestClose={handleBackdropPress}
     >
       <TouchableWithoutFeedback onPress={handleBackdropPress}>
-        <View style={styles.backdrop}>
+        <View style={isPickerVisible ? styles.pickerBackdrop : styles.sheetBackdrop}>
           <TouchableWithoutFeedback>
-            <View style={styles.sheetContainer}>
-              {/* Drag Handle Bar */}
-              <View style={styles.dragBar} />
-
-              {/* Brand Header */}
-              <View style={styles.headerRow}>
-                <View style={styles.logoBadge}>
-                  <Ionicons name="wallet" size={24} color={theme.colors.primary} />
-                </View>
-                <View style={styles.brandTitleCol}>
-                  <View style={styles.brandTagRow}>
-                    <Text style={styles.appName}>HFinmate</Text>
-                    <View style={styles.securityBadge}>
-                      <Ionicons name="shield-checkmark" size={11} color="#1A6A4C" />
-                      <Text style={styles.securityBadgeText}>FIREBASE AUTH</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.appTagline}>Sổ Chi Tiêu Cá Nhân Thông Minh</Text>
-                </View>
-              </View>
-
-              {/* Main Headline */}
-              <Text style={styles.headline}>Đăng nhập để bắt đầu</Text>
-              <Text style={styles.description}>
-                Liên kết tài khoản Google để bảo vệ số liệu, tự động đồng bộ và khôi phục nhật ký thu chi trên mọi thiết bị.
-              </Text>
-
-              {/* Key Benefits List */}
-              <View style={styles.benefitsCard}>
-                <View style={styles.benefitRow}>
-                  <View style={styles.benefitIconBox}>
-                    <Ionicons name="cloud-done-outline" size={18} color="#1A6A4C" />
-                  </View>
-                  <View style={styles.benefitTextCol}>
-                    <Text style={styles.benefitTitle}>Đồng bộ đám mây liên tục</Text>
-                    <Text style={styles.benefitSub}>Không lo mất sổ ghi chép khi đổi điện thoại hoặc cài lại app.</Text>
-                  </View>
-                </View>
-
-                <View style={styles.benefitDivider} />
-
-                <View style={styles.benefitRow}>
-                  <View style={styles.benefitIconBox}>
-                    <Ionicons name="lock-closed-outline" size={18} color="#1A6A4C" />
-                  </View>
-                  <View style={styles.benefitTextCol}>
-                    <Text style={styles.benefitTitle}>Mã hóa an toàn tuyệt đối</Text>
-                    <Text style={styles.benefitSub}>Dữ liệu thu chi cá nhân hoàn toàn riêng tư, chỉ mình bạn xem được.</Text>
-                  </View>
-                </View>
-
-                <View style={styles.benefitDivider} />
-
-                <View style={styles.benefitRow}>
-                  <View style={styles.benefitIconBox}>
-                    <Ionicons name="flash-outline" size={18} color="#1A6A4C" />
-                  </View>
-                  <View style={styles.benefitTextCol}>
-                    <Text style={styles.benefitTitle}>Tiện lợi với 1 chạm</Text>
-                    <Text style={styles.benefitSub}>Không cần nhớ mật khẩu mới, đăng nhập nhanh chóng và bảo mật.</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Primary Google Login Button */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                style={styles.googleButton}
-                onPress={() => handleGoogleSignIn(false)}
-                disabled={isLoading || submitting}
+            {isPickerVisible ? (
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={styles.dialogCard}
               >
-                {isLoading || submitting ? (
-                  <ActivityIndicator size="small" color="#1E293B" />
-                ) : (
+                {/* Google Brand Logo */}
+                <View style={styles.logoContainer}>
+                  <GoogleIcon size={36} />
+                </View>
+
+                {viewMode === 'picker' ? (
+                  // Giao diện chọn tài khoản có sẵn trên thiết bị
                   <>
-                    <View style={styles.googleIconWrapper}>
-                      <GoogleIcon size={20} />
+                    <Text style={styles.dialogTitle}>Đăng nhập bằng Google</Text>
+                    <Text style={styles.dialogSubtitle}>
+                      Chọn một tài khoản để tiếp tục tới HFinmate
+                    </Text>
+
+                    {/* Danh sách tài khoản trên máy */}
+                    <View style={styles.listContainer}>
+                      {accounts.map((acc, index) => {
+                        const avatarSrc = acc.avatarUrl || DEFAULT_GOOGLE_AVATAR_URI;
+                        return (
+                          <TouchableOpacity
+                            key={acc.id || acc.email || `acc-${index}`}
+                            style={styles.accountRow}
+                            activeOpacity={0.65}
+                            disabled={isLoading || submitting}
+                            onPress={() => handleSelectAccount(acc)}
+                          >
+                            <Image
+                              source={{ uri: avatarSrc }}
+                              style={styles.avatarImage}
+                              resizeMode="cover"
+                            />
+
+                            <View style={styles.accountInfoCol}>
+                              <Text style={styles.accountName} numberOfLines={1}>
+                                {acc.name}
+                              </Text>
+                              <Text style={styles.accountEmail} numberOfLines={1}>
+                                {acc.email}
+                              </Text>
+                            </View>
+
+                            <Ionicons name="chevron-forward" size={18} color="#747775" />
+                          </TouchableOpacity>
+                        );
+                      })}
+
+                      {/* Dòng: Sử dụng một tài khoản khác */}
+                      <TouchableOpacity
+                        style={styles.anotherAccountRow}
+                        activeOpacity={0.65}
+                        disabled={isLoading || submitting}
+                        onPress={handleUseAnotherAccount}
+                      >
+                        <View style={styles.addAccountIconCircle}>
+                          <Ionicons name="person-add-outline" size={20} color="#1A73E8" />
+                        </View>
+                        <Text style={styles.anotherAccountText}>
+                          Sử dụng một tài khoản khác
+                        </Text>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.googleButtonText}>Tiếp tục với Google</Text>
                   </>
+                ) : (
+                  // Giao diện nhập tài khoản Google mới (Hoạt động hoàn hảo trên mọi thiết bị iOS/Android/Web)
+                  <View style={styles.signInFormContainer}>
+                    <Text style={styles.dialogTitle}>Tài khoản Google</Text>
+                    <Text style={styles.dialogSubtitle}>
+                      Đăng nhập để đồng bộ dữ liệu thu chi trên mọi thiết bị
+                    </Text>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Email Google</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="name@gmail.com"
+                        placeholderTextColor="#9AA0A6"
+                        value={inputEmail}
+                        onChangeText={setInputEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        editable={!isLoading && !submitting}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Tên hiển thị (Tùy chọn)</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Ví dụ: Nguyễn Văn A"
+                        placeholderTextColor="#9AA0A6"
+                        value={inputName}
+                        onChangeText={setInputName}
+                        autoCapitalize="words"
+                        editable={!isLoading && !submitting}
+                      />
+                    </View>
+
+                    <View style={styles.actionButtonsRow}>
+                      {accounts.length > 0 && (
+                        <TouchableOpacity
+                          style={styles.backBtn}
+                          disabled={isLoading || submitting}
+                          onPress={() => setViewMode('picker')}
+                        >
+                          <Text style={styles.backBtnText}>Quay lại</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      <TouchableOpacity
+                        style={styles.submitBtn}
+                        disabled={isLoading || submitting}
+                        onPress={handleSubmitNewAccount}
+                      >
+                        {isLoading || submitting ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.submitBtnText}>Đăng nhập</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 )}
-              </TouchableOpacity>
 
-              {/* Quick Demo Test Option */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.demoButton}
-                onPress={() => handleGoogleSignIn(true)}
-                disabled={isLoading || submitting}
-              >
-                <Text style={styles.demoButtonText}>Trải nghiệm nhanh với Google Demo</Text>
-                <Ionicons name="arrow-forward" size={14} color="#71857A" />
-              </TouchableOpacity>
+                {/* Điều khoản chia sẻ tài khoản */}
+                <Text style={styles.privacyText}>
+                  Để tiếp tục, Google sẽ chia sẻ tên, địa chỉ email và ảnh hồ sơ của bạn với{' '}
+                  <Text style={styles.boldText}>HFinmate</Text>. Trước khi sử dụng ứng dụng này, hãy xem{' '}
+                  <Text style={styles.linkText}>Chính sách quyền riêng tư</Text>.
+                </Text>
 
-              {/* Footer Terms Note */}
-              <Text style={styles.footerNote}>
-                Bằng cách đăng nhập, bạn đồng ý với{' '}
-                <Text style={styles.footerLink}>Điều khoản dịch vụ</Text> và{' '}
-                <Text style={styles.footerLink}>Chính sách bảo mật</Text> của HFinmate.
-              </Text>
-            </View>
+                {/* Nút Hủy */}
+                {viewMode === 'picker' && (
+                  isLoading || submitting ? (
+                    <View style={styles.loadingRow}>
+                      <ActivityIndicator size="small" color="#1A73E8" />
+                      <Text style={styles.loadingText}>Đang kết nối đồng bộ...</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.cancelBtn}
+                      activeOpacity={0.65}
+                      onPress={() => setIsPickerVisible(false)}
+                    >
+                      <Text style={styles.cancelText}>Đóng</Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </KeyboardAvoidingView>
+            ) : (
+              // Màn hình Bottom Sheet cạnh dưới khi người dùng bấm Đóng
+              <View style={styles.sheetContainer}>
+                <View style={styles.dragBar} />
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.googleActionBtn}
+                  onPress={() => setIsPickerVisible(true)}
+                  disabled={isLoading || submitting}
+                >
+                  <View style={styles.googleIconBox}>
+                    <GoogleIcon size={20} />
+                  </View>
+                  <Text style={styles.googleActionText}>Tiếp tục với Google</Text>
+                </TouchableOpacity>
+
+                <Text style={styles.footerNote}>
+                  Bằng cách đăng nhập, bạn đồng ý với{' '}
+                  <Text style={styles.footerLink}>Điều khoản dịch vụ</Text> và{' '}
+                  <Text style={styles.footerLink}>Chính sách bảo mật</Text> của HFinmate.
+                </Text>
+              </View>
+            )}
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
@@ -210,18 +450,209 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'flex-end',
   },
+  // Centered Dialog
+  dialogCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  logoContainer: {
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F1F1F',
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: -0.2,
+  },
+  dialogSubtitle: {
+    fontSize: 13.5,
+    color: '#444746',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  listContainer: {
+    width: '100%',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E1E3E1',
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E1E3E1',
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F1F5F9',
+  },
+  accountInfoCol: {
+    flex: 1,
+    marginHorizontal: 12,
+  },
+  accountName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F1F1F',
+  },
+  accountEmail: {
+    fontSize: 13,
+    color: '#444746',
+    marginTop: 2,
+  },
+  anotherAccountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E1E3E1',
+  },
+  addAccountIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E8F0FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  anotherAccountText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A73E8',
+    marginLeft: 14,
+  },
+  privacyText: {
+    fontSize: 11.5,
+    color: '#444746',
+    textAlign: 'center',
+    lineHeight: 16,
+    marginTop: 18,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  boldText: {
+    fontWeight: '700',
+    color: '#1F1F1F',
+  },
+  linkText: {
+    color: '#1A73E8',
+    fontWeight: '600',
+  },
+  cancelBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+  },
+  cancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#444746',
+  },
+  // Form styles for Google Sign-in on all platforms
+  signInFormContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  inputGroup: {
+    width: '100%',
+    marginBottom: 14,
+  },
+  inputLabel: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#444746',
+    marginBottom: 6,
+  },
+  textInput: {
+    width: '100%',
+    height: 48,
+    borderWidth: 1.5,
+    borderColor: '#DADCE0',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    fontSize: 14.5,
+    color: '#1F1F1F',
+    backgroundColor: '#FAFAFA',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    width: '100%',
+    marginTop: 8,
+    gap: 12,
+  },
+  backBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A73E8',
+  },
+  submitBtn: {
+    backgroundColor: '#1A73E8',
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 110,
+  },
+  submitBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  loadingText: {
+    fontSize: 13.5,
+    color: '#1A73E8',
+    fontWeight: '600',
+  },
+  // Bottom Sheet
   sheetContainer: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 22,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 36,
+    paddingBottom: 28,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.16,
@@ -234,164 +665,42 @@ const styles = StyleSheet.create({
     borderRadius: 2.5,
     backgroundColor: '#CBD5E1',
     alignSelf: 'center',
-    marginBottom: 18,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  logoBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#EAF5EF',
-    borderWidth: 1.5,
-    borderColor: '#C3E7D6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  brandTitleCol: {
-    flex: 1,
-  },
-  brandTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  appName: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#17271F',
-    letterSpacing: -0.3,
-  },
-  securityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#EAF5EF',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#C3E7D6',
-  },
-  securityBadgeText: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    color: '#1A6A4C',
-    letterSpacing: 0.3,
-  },
-  appTagline: {
-    fontSize: 12.5,
-    color: '#71857A',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  headline: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#17271F',
-    marginBottom: 6,
-    letterSpacing: -0.4,
-  },
-  description: {
-    fontSize: 13.5,
-    color: '#556960',
-    lineHeight: 19,
     marginBottom: 16,
   },
-  benefitsCard: {
-    backgroundColor: '#F7FAF8',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E6EFEA',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 18,
-  },
-  benefitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 5,
-  },
-  benefitIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#EAF5EF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  benefitTextCol: {
-    flex: 1,
-  },
-  benefitTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#17271F',
-    marginBottom: 1,
-  },
-  benefitSub: {
-    fontSize: 11.5,
-    color: '#71857A',
-    lineHeight: 16,
-  },
-  benefitDivider: {
-    height: 1,
-    backgroundColor: '#EAF0EC',
-    marginVertical: 4,
-    marginLeft: 46,
-  },
-  googleButton: {
+  googleActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 52,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 26,
     borderWidth: 1.5,
-    borderColor: '#D8E2DC',
-    shadowColor: '#000',
+    borderColor: '#CBD5E1',
+    marginBottom: 16,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     elevation: 2,
-    marginBottom: 10,
   },
-  googleIconWrapper: {
+  googleIconBox: {
     marginRight: 10,
   },
-  googleButtonText: {
-    fontSize: 15.5,
+  googleActionText: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#1F2937',
     letterSpacing: -0.2,
   },
-  demoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    marginBottom: 10,
-  },
-  demoButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4B6B5B',
-  },
   footerNote: {
-    fontSize: 11,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 16,
+    lineHeight: 18,
     paddingHorizontal: 16,
   },
   footerLink: {
-    color: '#1A6A4C',
-    fontWeight: '600',
+    color: '#1F2937',
+    fontWeight: '700',
   },
 });

@@ -3,7 +3,8 @@ import { ApiResponse } from '../../models/api.model';
 import { apiClient } from '../api/apiClient';
 import { storageService } from '../storage/storageService';
 import { firebaseAuthService } from '../firebase/firebaseAuthService';
-import { INITIAL_USER } from '../mock/mockData';
+
+import { DEFAULT_GOOGLE_AVATAR_URI } from '../../constants/avatar';
 
 const SESSION_KEY = 'user_session';
 const TOKEN_KEY = 'auth_token';
@@ -12,6 +13,7 @@ export interface IAuthRepository {
   getCurrentUser(): Promise<User | null>;
   login(credentials: LoginCredentials): Promise<AuthSession>;
   loginWithGoogle(payload?: GoogleLoginPayload): Promise<AuthSession>;
+  loginWithAnotherGoogleAccount(): Promise<AuthSession>;
   logout(): Promise<void>;
   updateUser(updates: Partial<User>): Promise<User>;
 }
@@ -55,8 +57,10 @@ class AuthRepository implements IAuthRepository {
     const session: AuthSession = {
       token: `token_${Date.now()}`,
       user: {
-        ...INITIAL_USER,
+        id: `usr_${Date.now()}`,
+        name: credentials.email.split('@')[0],
         email: credentials.email,
+        preferredCurrency: 'VND',
       },
     };
 
@@ -66,16 +70,29 @@ class AuthRepository implements IAuthRepository {
   }
 
   async loginWithGoogle(payload?: GoogleLoginPayload): Promise<AuthSession> {
+    if (!payload?.email || !payload.email.trim()) {
+      throw new Error('Vui lòng cung cấp email tài khoản Google để đăng nhập.');
+    }
+
+    const targetEmail = payload.email.trim();
+    const targetName = payload.name?.trim() || targetEmail.split('@')[0];
+    const targetAvatar = payload.avatarUrl || DEFAULT_GOOGLE_AVATAR_URI;
+
     // 1. First authenticate with Firebase Google Auth
     let fbProfile = {
-      email: payload?.email || 'user.google@gmail.com',
-      displayName: payload?.name || 'Người dùng Google',
-      photoURL: payload?.avatarUrl,
+      email: targetEmail,
+      displayName: targetName,
+      photoURL: targetAvatar,
       idToken: payload?.idToken,
     };
 
     try {
-      const result = await firebaseAuthService.signInWithGoogle(payload?.email, payload?.name);
+      const result = await firebaseAuthService.signInWithGoogle(
+        targetEmail,
+        targetName,
+        targetAvatar,
+        { direct: true }
+      );
       fbProfile = {
         email: result.email || fbProfile.email,
         displayName: result.displayName || fbProfile.displayName,
@@ -83,7 +100,6 @@ class AuthRepository implements IAuthRepository {
         idToken: result.idToken || fbProfile.idToken,
       };
     } catch (fbErr: any) {
-      // Re-throw if user explicitly cancelled the login popup
       if (fbErr.message?.includes('hủy')) {
         throw fbErr;
       }
@@ -106,17 +122,18 @@ class AuthRepository implements IAuthRepository {
         await storageService.setItem(TOKEN_KEY, session.token);
         return session;
       }
-    } catch {
-      // Fallback offline session
+    } catch (apiErr) {
+      console.warn('[AuthRepository] Sync with backend error, fallback local:', apiErr);
     }
 
-    // 3. Fallback offline session with Firebase credentials
+    // 3. Fallback offline session with dynamic credentials
+    const userEmail = creds.email || targetEmail;
     const session: AuthSession = {
-      token: creds.idToken || `token_google_${Date.now()}`,
+      token: creds.idToken || `token_google_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
       user: {
-        id: `usr_google_${Date.now()}`,
-        name: creds.name || 'Người dùng Google',
-        email: creds.email || 'user.google@gmail.com',
+        id: `usr_google_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        name: creds.name || targetName,
+        email: userEmail,
         avatarUrl: creds.avatarUrl,
         preferredCurrency: 'VND',
       },
@@ -125,6 +142,16 @@ class AuthRepository implements IAuthRepository {
     await storageService.setItem(SESSION_KEY, session);
     await storageService.setItem(TOKEN_KEY, session.token);
     return session;
+  }
+
+  async loginWithAnotherGoogleAccount(): Promise<AuthSession> {
+    const profile = await firebaseAuthService.signInWithAnotherGoogleAccount();
+    return this.loginWithGoogle({
+      email: profile.email,
+      name: profile.displayName,
+      avatarUrl: profile.photoURL,
+      idToken: profile.idToken,
+    });
   }
 
   async logout(): Promise<void> {
@@ -158,7 +185,12 @@ class AuthRepository implements IAuthRepository {
     }
 
     const session = await storageService.getItem<AuthSession>(SESSION_KEY);
-    const currentUser = session?.user || INITIAL_USER;
+    const currentUser: User = session?.user || {
+      id: `usr_${Date.now()}`,
+      name: 'Người dùng',
+      email: '',
+      preferredCurrency: 'VND',
+    };
     const updatedUser: User = { ...currentUser, ...updates };
 
     await storageService.setItem(SESSION_KEY, {

@@ -15,12 +15,9 @@ export const CategoryBreakdownSection: React.FC<CategoryBreakdownSectionProps> =
 }) => {
   return (
     <View style={styles.container}>
-      {/* 1. Header: "Tiền đi đâu?" & "Theo loại chi" */}
+      {/* 1. Header: "Tiền đi đâu?" */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>{data.title || 'Tiền đi đâu?'}</Text>
-        <Text style={styles.headerRightLink}>
-          {data.headerLinkText || 'Theo loại chi'}
-        </Text>
+        <Text style={styles.headerTitle}>Tiền đi đâu?</Text>
       </View>
 
       {/* 2. Hero Summary Card with Donut Chart */}

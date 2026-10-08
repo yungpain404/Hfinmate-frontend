@@ -309,19 +309,6 @@ const styles = StyleSheet.create({
     color: '#17271F',
     marginLeft: 6,
   },
-  avatarButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#EAF5EF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1A6A4C',
-  },
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 8,

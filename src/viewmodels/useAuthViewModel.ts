@@ -11,6 +11,7 @@ interface AuthState {
   initAuth: () => Promise<void>;
   login: (credentials: LoginCredentials) => Promise<boolean>;
   loginWithGoogle: (payload?: GoogleLoginPayload) => Promise<boolean>;
+  loginWithAnotherGoogleAccount: () => Promise<boolean>;
   logout: () => Promise<void>;
   showGoogleModal: () => void;
   hideGoogleModal: () => void;
@@ -21,12 +22,12 @@ const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isGoogleModalVisible: false,
-  isLoading: true,
+  isLoading: false,
   error: null,
 
   initAuth: async () => {
     try {
-      set({ isLoading: true, error: null });
+      set({ error: null });
       const user = await authRepository.getCurrentUser();
       const isAuth = !!user;
       set({
@@ -86,6 +87,26 @@ const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
+  loginWithAnotherGoogleAccount: async () => {
+    try {
+      set({ isLoading: true, error: null });
+      const session = await authRepository.loginWithAnotherGoogleAccount();
+      set({
+        user: session.user,
+        isAuthenticated: true,
+        isGoogleModalVisible: false,
+        isLoading: false,
+      });
+      return true;
+    } catch (err) {
+      set({
+        isLoading: false,
+        error: (err as Error).message || 'Đăng nhập Google không thành công',
+      });
+      return false;
+    }
+  },
+
   logout: async () => {
     try {
       set({ isLoading: true });
@@ -126,6 +147,7 @@ export function useAuthViewModel() {
     initAuth: store.initAuth,
     login: store.login,
     loginWithGoogle: store.loginWithGoogle,
+    loginWithAnotherGoogleAccount: store.loginWithAnotherGoogleAccount,
     logout: store.logout,
     showGoogleModal: store.showGoogleModal,
     hideGoogleModal: store.hideGoogleModal,

@@ -17,3 +17,6 @@ export * from './CategoryBreakdownSection';
 export * from './CategoryPickerModal';
 export * from './ExpenseCalendarView';
 export * from './GoogleAuthBottomSheet';
+export * from './GoogleAccountPickerModal';
+export * from './UserAvatar';
+

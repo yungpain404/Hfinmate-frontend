@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
 import { useTransactionListViewModel } from '../viewmodels/useTransactionListViewModel';
-import { Card, Button, Badge, Header } from '../components';
+import { Card, Button, Badge, Header, UserAvatar } from '../components';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme';
 
@@ -68,9 +68,13 @@ export const ProfileScreen: React.FC = () => {
       >
         {/* User Card */}
         <Card style={styles.userCard} padding="lg">
-          <View style={styles.avatarCircle}>
-            <Ionicons name={user ? 'logo-google' : 'person'} size={28} color="#FFFFFF" />
-          </View>
+          <UserAvatar
+            avatarUrl={user?.avatarUrl}
+            size={60}
+            style={{ marginRight: 16 }}
+            backgroundColor={user?.avatarUrl ? '#EAF5EF' : theme.colors.primary}
+            iconColor="#FFFFFF"
+          />
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.name || 'Chưa đăng nhập'}</Text>
             <Text style={styles.userEmail}>{user?.email || 'Chưa liên kết Google'}</Text>
@@ -100,51 +104,6 @@ export const ProfileScreen: React.FC = () => {
           </TouchableOpacity>
         ) : null}
 
-        {/* Architecture Spec Card */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Kiến trúc ứng dụng MVVM</Text>
-          <Card padding="md">
-            <View style={styles.specRow}>
-              <View style={styles.specIcon}>
-                <Ionicons name="layers" size={20} color={theme.colors.primary} />
-              </View>
-              <View style={styles.specContent}>
-                <Text style={styles.specHeading}>Model</Text>
-                <Text style={styles.specDetail}>
-                  Entity DTOs, Axios ApiClient, StorageService, Repositories.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.specRow}>
-              <View style={styles.specIcon}>
-                <Ionicons name="cog" size={20} color={theme.colors.secondary} />
-              </View>
-              <View style={styles.specContent}>
-                <Text style={styles.specHeading}>ViewModel</Text>
-                <Text style={styles.specDetail}>
-                  Custom Hooks (`useWallet`, `useTransactionList`, `useCreateTransaction`) & Zustand.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.specRow}>
-              <View style={styles.specIcon}>
-                <Ionicons name="phone-portrait" size={20} color={theme.colors.warning} />
-              </View>
-              <View style={styles.specContent}>
-                <Text style={styles.specHeading}>View</Text>
-                <Text style={styles.specDetail}>
-                  Pure Presentation, SafeAreaView, KeyboardAvoidingView, Binding từ ViewModel.
-                </Text>
-              </View>
-            </View>
-          </Card>
-        </View>
 
         {/* System Settings & Actions */}
         <View style={styles.section}>
@@ -246,34 +205,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.textPrimary,
     marginBottom: 8,
-  },
-  specRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  specIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  specContent: {
-    flex: 1,
-  },
-  specHeading: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  specDetail: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    marginTop: 2,
-    lineHeight: 16,
   },
   divider: {
     height: 1,
