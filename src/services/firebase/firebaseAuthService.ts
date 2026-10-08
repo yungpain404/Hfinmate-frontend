@@ -145,20 +145,25 @@ export class FirebaseAuthService {
         '205520143301-69acsru6sjc2vvp57qbe0g5qda0lvke6.apps.googleusercontent.com';
 
       try {
-        const redirectUri = AuthSession.makeRedirectUri({
-          scheme: 'hfinmate',
-          path: 'auth',
-        });
+        const redirectUri =
+          AuthSession.makeRedirectUri({
+            // Use proxy for Expo Go to match https://auth.expo.io/@yungpain404/HFinmate
+          }) || 'https://auth.expo.io/@yungpain404/HFinmate';
+
+        // Ensure Expo Auth Proxy URL is used for Google OAuth to avoid redirect_uri_mismatch
+        const targetRedirectUri =
+          redirectUri.startsWith('https://auth.expo.io') ? redirectUri : 'https://auth.expo.io/@yungpain404/HFinmate';
+
         const nonce = Math.random().toString(36).substring(2, 15);
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
           clientId
         )}&redirect_uri=${encodeURIComponent(
-          redirectUri
+          targetRedirectUri
         )}&response_type=${encodeURIComponent('token id_token')}&scope=${encodeURIComponent(
           'openid profile email'
         )}&prompt=select_account&nonce=${encodeURIComponent(nonce)}`;
 
-        const authResult = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+        const authResult = await WebBrowser.openAuthSessionAsync(authUrl, targetRedirectUri);
         if (authResult.type === 'success' && authResult.url) {
           const tokenMatch = authResult.url.match(/[#?&]access_token=([^&]+)/);
           const idTokenMatch = authResult.url.match(/[#?&]id_token=([^&]+)/);

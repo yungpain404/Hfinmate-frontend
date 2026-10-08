@@ -16,6 +16,7 @@ import { useAuthViewModel } from '../viewmodels/useAuthViewModel';
 import { DEFAULT_GOOGLE_AVATAR_URI } from '../constants/avatar';
 import { GoogleAccountItem } from './GoogleAccountPickerModal';
 import { UserAvatar } from './UserAvatar';
+import { useGoogleAuthSession } from '../hooks/useGoogleAuthSession';
 
 interface GoogleAuthBottomSheetProps {
   visible: boolean;
@@ -189,39 +190,33 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     }
   };
 
-  // 2. Trigger native Google Sign-In & system account chooser flow
-  const handleTriggerGoogleOAuth = async () => {
-    try {
-      setSubmitting(true);
-      const ok = await loginWithAnotherGoogleAccount();
-      if (ok) {
-        // Read newly stored credentials to update remembered accounts
-        const [lastEmail, lastName, lastAvatar] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_EMAIL),
-          AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_NAME),
-          AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_AVATAR),
-        ]);
+  const { signIn: triggerGoogleOAuth, submitting: oauthSubmitting } = useGoogleAuthSession({
+    onSuccess: async () => {
+      const [lastEmail, lastName, lastAvatar] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_EMAIL),
+        AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_NAME),
+        AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_AVATAR),
+      ]);
 
-        if (lastEmail) {
-          const newAcc: GoogleAccountItem = {
-            id: `acc_${lastEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-            name: lastName?.trim() || lastEmail.split('@')[0],
-            email: lastEmail.trim(),
-            avatarUrl: lastAvatar || DEFAULT_GOOGLE_AVATAR_URI,
-          };
-          const updated = [
-            newAcc,
-            ...accounts.filter((a) => a.email.toLowerCase() !== lastEmail.toLowerCase()),
-          ];
-          setAccounts(updated);
-          await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(updated));
-        }
-
-        setIsPickerVisible(false);
-        onSuccess?.();
+      if (lastEmail) {
+        const newAcc: GoogleAccountItem = {
+          id: `acc_${lastEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+          name: lastName?.trim() || lastEmail.split('@')[0],
+          email: lastEmail.trim(),
+          avatarUrl: lastAvatar || DEFAULT_GOOGLE_AVATAR_URI,
+        };
+        const updated = [
+          newAcc,
+          ...accounts.filter((a) => a.email.toLowerCase() !== lastEmail.toLowerCase()),
+        ];
+        setAccounts(updated);
+        await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(updated));
       }
-    } catch (err: any) {
-      // Graceful cancellation handling: If user closed the Google picker without selecting
+
+      setIsPickerVisible(false);
+      onSuccess?.();
+    },
+    onError: (err) => {
       if (
         err.message?.includes('hủy') ||
         err.message?.includes('cancel') ||
@@ -234,9 +229,12 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
         'Đăng nhập Google',
         err.message || 'Chưa thể hoàn tất đăng nhập bằng tài khoản Google.'
       );
-    } finally {
-      setSubmitting(false);
-    }
+    },
+  });
+
+  // 2. Trigger native Google Sign-In & system account chooser flow via Expo Auth Proxy
+  const handleTriggerGoogleOAuth = async () => {
+    await triggerGoogleOAuth();
   };
 
   const handleBackdropPress = () => {
@@ -251,7 +249,7 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     }
   };
 
-  const isBusy = isLoading || submitting;
+  const isBusy = isLoading || submitting || oauthSubmitting;
 
   return (
     <Modal

@@ -2,6 +2,7 @@
   "expo": {
     "name": "HFinmate",
     "slug": "HFinmate",
+    "owner": "yungpain404",
     "scheme": "hfinmate",
     "version": "1.0.0",
     "orientation": "portrait",
