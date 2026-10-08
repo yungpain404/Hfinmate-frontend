@@ -76,7 +76,7 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
     if (visible) {
       setIsPickerVisible(true);
 
-      // Load remembered accounts from device storage
+      // Load remembered accounts from device storage, filtering out any old default accounts
       AsyncStorage.getItem(STORAGE_KEY_SAVED_ACCOUNTS)
         .then(async (raw) => {
           let list: GoogleAccountItem[] = [];
@@ -88,6 +88,14 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
             }
           }
 
+          // Purge any default or hardcoded test account from storage
+          list = list.filter(
+            (acc) =>
+              acc &&
+              acc.email &&
+              !acc.email.toLowerCase().includes('nguyenngochau092@gmail.com')
+          );
+
           if (list.length === 0) {
             const [lastEmail, lastName, lastAvatar] = await Promise.all([
               AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_EMAIL),
@@ -95,7 +103,17 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
               AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_AVATAR),
             ]);
 
-            if (lastEmail && lastEmail.trim().length > 0) {
+            if (
+              lastEmail &&
+              lastEmail.toLowerCase().includes('nguyenngochau092@gmail.com')
+            ) {
+              await Promise.all([
+                AsyncStorage.removeItem(STORAGE_KEY_LAST_GOOGLE_EMAIL),
+                AsyncStorage.removeItem(STORAGE_KEY_LAST_GOOGLE_NAME),
+                AsyncStorage.removeItem(STORAGE_KEY_LAST_GOOGLE_AVATAR),
+                AsyncStorage.removeItem(STORAGE_KEY_SAVED_ACCOUNTS),
+              ]);
+            } else if (lastEmail && lastEmail.trim().length > 0) {
               const savedAcc: GoogleAccountItem = {
                 id: `acc_${Date.now()}`,
                 name: lastName?.trim() || lastEmail.split('@')[0],
@@ -105,6 +123,8 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
               list = [savedAcc];
               await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(list));
             }
+          } else {
+            await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(list));
           }
 
           setAccounts(list);
@@ -120,6 +140,28 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
         });
     }
   }, [visible]);
+
+  // Xóa tài khoản đã lưu khỏi thiết bị
+  const handleRemoveAccount = async (emailToRemove: string) => {
+    const updated = accounts.filter(
+      (a) => a.email.toLowerCase() !== emailToRemove.toLowerCase()
+    );
+    setAccounts(updated);
+    await AsyncStorage.setItem(STORAGE_KEY_SAVED_ACCOUNTS, JSON.stringify(updated));
+
+    const lastEmail = await AsyncStorage.getItem(STORAGE_KEY_LAST_GOOGLE_EMAIL);
+    if (lastEmail?.toLowerCase() === emailToRemove.toLowerCase()) {
+      await Promise.all([
+        AsyncStorage.removeItem(STORAGE_KEY_LAST_GOOGLE_EMAIL),
+        AsyncStorage.removeItem(STORAGE_KEY_LAST_GOOGLE_NAME),
+        AsyncStorage.removeItem(STORAGE_KEY_LAST_GOOGLE_AVATAR),
+      ]);
+    }
+
+    if (updated.length === 0) {
+      setViewMode('signin');
+    }
+  };
 
   // 1. Khi chọn tài khoản đang có trên máy: Đăng nhập trực tiếp, đồng bộ ngay lập tức
   const handleSelectAccount = async (account: GoogleAccountItem) => {
@@ -310,7 +352,26 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
                               </Text>
                             </View>
 
-                            <Ionicons name="chevron-forward" size={18} color="#747775" />
+                            <TouchableOpacity
+                              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                              style={styles.removeAccountBtn}
+                              onPress={() => {
+                                Alert.alert(
+                                  'Xóa tài khoản',
+                                  `Bạn có muốn xóa tài khoản ${acc.email} khỏi thiết bị này?`,
+                                  [
+                                    { text: 'Hủy', style: 'cancel' },
+                                    {
+                                      text: 'Xóa',
+                                      style: 'destructive',
+                                      onPress: () => handleRemoveAccount(acc.email),
+                                    },
+                                  ]
+                                );
+                              }}
+                            >
+                              <Ionicons name="close-circle-outline" size={20} color="#94A3B8" />
+                            </TouchableOpacity>
                           </TouchableOpacity>
                         );
                       })}
@@ -528,6 +589,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#444746',
     marginTop: 2,
+  },
+  removeAccountBtn: {
+    padding: 6,
+    marginLeft: 8,
   },
   anotherAccountRow: {
     flexDirection: 'row',

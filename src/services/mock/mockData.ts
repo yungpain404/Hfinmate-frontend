@@ -8,12 +8,7 @@ const currentMonth = now.getMonth() + 1;
 const currentYear = now.getFullYear();
 const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
-export const INITIAL_USER: User = {
-  id: 'usr_guest',
-  name: 'Người dùng',
-  email: '',
-  preferredCurrency: 'VND',
-};
+export const INITIAL_USER: User | null = null;
 
 export const INITIAL_DASHBOARD_DATA: HomeDashboardData = {
   monthName: `Tháng ${currentMonth}`,

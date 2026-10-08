@@ -35,7 +35,15 @@ class AuthRepository implements IAuthRepository {
     }
 
     const session = await storageService.getItem<AuthSession>(SESSION_KEY);
-    if (!session) {
+    if (
+      !session ||
+      !session.user?.email ||
+      session.user.email.toLowerCase().includes('nguyenngochau092@gmail.com')
+    ) {
+      if (session) {
+        await storageService.removeItem(SESSION_KEY);
+        await storageService.removeItem(TOKEN_KEY);
+      }
       return null;
     }
     return session.user;
