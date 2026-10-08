@@ -44,8 +44,6 @@ export function useGoogleAuthSession(options?: UseGoogleAuthSessionOptions) {
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId,
-    androidClientId,
-    iosClientId,
     redirectUri,
     scopes: ['profile', 'email'],
     responseType: 'id_token',

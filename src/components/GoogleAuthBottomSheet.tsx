@@ -90,8 +90,6 @@ export const GoogleAuthBottomSheet: React.FC<GoogleAuthBottomSheetProps> = ({
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId,
-    androidClientId,
-    iosClientId,
     redirectUri: redirectUri,
     scopes: ['profile', 'email'],
     responseType: 'id_token',
