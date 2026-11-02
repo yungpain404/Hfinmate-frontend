@@ -24,16 +24,17 @@ export const HomeScreen: React.FC = () => {
   const tabHeight = Platform.OS === 'ios' ? 84 : 62;
   const bottomOffset = tabHeight + 10;
 
-  // Scroll to top whenever tab is switched to
-  useFocusEffect(
-    useCallback(() => {
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }, [])
-  );
-
   // Bind ViewModel
   const { dashboard, isLoading, isRefreshing, handleRefresh } =
     useHomeDashboardViewModel();
+
+  // Scroll to top and refresh whenever tab is switched to
+  useFocusEffect(
+    useCallback(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      handleRefresh();
+    }, [handleRefresh])
+  );
 
   if (isLoading && !dashboard) {
     return <LoadingIndicator message="Đang nạp dữ liệu sổ chi..." />;
@@ -171,6 +172,13 @@ export const HomeScreen: React.FC = () => {
 
           <View style={styles.recentDaysList}>
             {dashboard.recentDays.map((dayGroup, index) => {
+              const now = new Date();
+              const currentYear = now.getFullYear();
+              const currentMonth = now.getMonth() + 1;
+              const padMonth = String(currentMonth).padStart(2, '0');
+              const padDay = String(dayGroup.day).padStart(2, '0');
+              const dayDateISO = `${currentYear}-${padMonth}-${padDay}`;
+
               return (
                 <TouchableOpacity
                   key={dayGroup.id}
@@ -179,7 +187,7 @@ export const HomeScreen: React.FC = () => {
                     styles.dayRow,
                     index < dashboard.recentDays.length - 1 && styles.dayRowBorder,
                   ]}
-                  onPress={() => navigation.navigate('Transactions')}
+                  onPress={() => navigation.navigate('AddTransaction', { date: dayDateISO })}
                 >
                   {/* Left Date Box */}
                   <View style={styles.dateBox}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { DailyExpenseItemDraft, DailyExpenseSheet } from '../models/dailyExpense.model';
 import { detectCategoryFromItemName } from '../models/expenseCategory.model';
 import { dailyExpenseRepository } from '../services/repositories/dailyExpenseRepository';
@@ -26,19 +26,50 @@ function formatDateToISO(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseInitialDate(input?: Date | string): Date {
+  if (!input) return new Date();
+  if (input instanceof Date) return input;
+  const parts = input.split('-');
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    return new Date(y, m, d);
+  }
+  const parsed = new Date(input);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function createSnapshot(
+  list: { name: string; amount: number; category?: string }[]
+): string {
+  const filtered = list
+    .filter((i) => (i.name && i.name.trim().length > 0) || i.amount > 0)
+    .map((i) => ({
+      name: (i.name || '').trim(),
+      amount: i.amount || 0,
+      category: i.category || 'Ăn uống',
+    }));
+  return JSON.stringify(filtered);
+}
+
 /**
  * ViewModel: useDailyExpenseViewModel
- * Strictly encapsulates business logic, dynamic row calculations, and sheet saving
+ * Strictly encapsulates business logic, dynamic row calculations, snapshot comparison, and sheet saving
  */
-export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
-  const [currentDateObj, setCurrentDateObj] = useState<Date>(initialDate);
-  const [date, setDate] = useState<string>(formatDateToISO(initialDate));
-  const [displayDate, setDisplayDate] = useState<string>(formatDateToVietnamese(initialDate));
+export function useDailyExpenseViewModel(initialDateInput?: Date | string) {
+  const parsedInitial = useMemo(() => parseInitialDate(initialDateInput), [initialDateInput]);
+  const [currentDateObj, setCurrentDateObj] = useState<Date>(parsedInitial);
+  const [date, setDate] = useState<string>(formatDateToISO(parsedInitial));
+  const [displayDate, setDisplayDate] = useState<string>(formatDateToVietnamese(parsedInitial));
   const [items, setItems] = useState<DailyExpenseItemDraft[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>('row_1');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Snapshot tracking to prevent duplicate saves and redundant adds
+  const initialSnapshotRef = useRef<string>('');
 
   const loadSheet = useCallback(async (dateKey: string) => {
     try {
@@ -46,7 +77,26 @@ export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
       setError(null);
       const sheet = await dailyExpenseRepository.getSheet(dateKey);
       setDisplayDate(sheet.displayDate);
-      setItems(sheet.items);
+      if (sheet.items && sheet.items.length > 0) {
+        const loadedDrafts = sheet.items.map((i) => ({
+          ...i,
+          category: i.category || 'Ăn uống',
+          amountInput: i.amount > 0 ? formatNumberString(i.amount) : '',
+        }));
+        setItems(loadedDrafts);
+        initialSnapshotRef.current = createSnapshot(sheet.items);
+      } else {
+        setItems([
+          {
+            id: `row_${Date.now()}_1`,
+            name: '',
+            amount: 0,
+            amountInput: '',
+            category: 'Ăn uống',
+          },
+        ]);
+        initialSnapshotRef.current = '[]';
+      }
     } catch (err) {
       setError((err as Error).message || 'Không thể tải chi tiêu ngày');
     } finally {
@@ -76,9 +126,12 @@ export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
       prev.map((item) => {
         if (item.id === id) {
           const updated = { ...item, name };
-          const detected = detectCategoryFromItemName(name);
-          if (detected && (item.category === 'Ăn uống' || !item.category)) {
-            updated.category = detected;
+          // Only auto-detect if the user hasn't explicitly chosen a category
+          if (!(item as any).userChosenCategory) {
+            const detected = detectCategoryFromItemName(name);
+            if (detected) {
+              updated.category = detected;
+            }
           }
           return updated;
         }
@@ -106,7 +159,15 @@ export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
 
   const handleCategoryChange = useCallback((id: string, category: string) => {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, category } : item))
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              category,
+              userChosenCategory: true,
+            }
+          : item
+      )
     );
   }, []);
 
@@ -125,18 +186,32 @@ export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
 
   const handleRemoveRow = useCallback((id: string) => {
     setItems((prev) => {
-      if (prev.length <= 1) return prev; // keep at least 1 row
+      if (prev.length <= 1) {
+        // If there's only 1 row, clear it to 0 instead of refusing to delete
+        return [
+          {
+            id: `row_${Date.now()}`,
+            name: '',
+            amount: 0,
+            amountInput: '',
+            category: 'Ăn uống',
+          },
+        ];
+      }
       return prev.filter((item) => item.id !== id);
     });
   }, []);
 
   // Compute total and equation formula
-  const { totalAmount, totalAmountFormatted, formulaText, autoCountText } =
+  const { totalAmount, totalAmountFormatted, formulaText, autoCountText, validCount } =
     useMemo(() => {
-      const total = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+      const valid = items.filter(
+        (i) => (i.name && i.name.trim().length > 0) || (i.amount && i.amount > 0)
+      );
+      const total = valid.reduce((sum, item) => sum + (item.amount || 0), 0);
       const totalFormatted = `${new Intl.NumberFormat('vi-VN').format(total)}đ`;
 
-      const parts = items
+      const parts = valid
         .filter((item) => item.amount > 0)
         .map((item) => formatNumberString(item.amount));
 
@@ -147,26 +222,56 @@ export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
         totalAmount: total,
         totalAmountFormatted: totalFormatted,
         formulaText: formula,
-        autoCountText: `Tự tính từ ${items.length} khoản chi`,
+        autoCountText: `Tự tính từ ${valid.length} khoản chi`,
+        validCount: valid.length,
       };
     }, [items]);
 
   const handleSave = useCallback(
     async (onSuccess?: () => void): Promise<boolean> => {
+      if (isSaving) return false;
       try {
         setIsSaving(true);
         setError(null);
 
+        const validItems = items.filter(
+          (i) => (i.name && i.name.trim().length > 0) || (i.amount && i.amount > 0)
+        );
+        const actualTotal = validItems.reduce(
+          (sum, item) => sum + (item.amount || 0),
+          0
+        );
+
+        const currentSnapshot = createSnapshot(validItems);
+
+        // If nothing has changed compared to loaded/saved data, return immediately without re-adding or re-saving
+        if (currentSnapshot === initialSnapshotRef.current) {
+          if (onSuccess) {
+            onSuccess();
+          }
+          return true;
+        }
+
+        const parts = validItems
+          .filter((item) => item.amount > 0)
+          .map((item) => formatNumberString(item.amount));
+        const actualFormula =
+          parts.length > 0
+            ? `${parts.join(' + ')} = ${new Intl.NumberFormat('vi-VN').format(actualTotal)}đ`
+            : '0đ';
+
         const sheetData: DailyExpenseSheet = {
           date,
           displayDate,
-          items: items.filter((i) => i.name.trim().length > 0 || i.amount > 0),
-          totalAmount,
-          formulaText,
+          items: validItems,
+          totalAmount: actualTotal,
+          formulaText: actualFormula,
           footerNote: 'Xăng, nước, gửi xe và trọ được ghi riêng ở mục Cố định.',
         };
 
         await dailyExpenseRepository.saveSheet(sheetData);
+        initialSnapshotRef.current = currentSnapshot;
+
         if (onSuccess) {
           onSuccess();
         }
@@ -178,7 +283,7 @@ export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
         setIsSaving(false);
       }
     },
-    [date, displayDate, items, totalAmount, formulaText]
+    [isSaving, date, displayDate, items]
   );
 
   return {
@@ -187,7 +292,7 @@ export function useDailyExpenseViewModel(initialDate: Date = new Date()) {
     currentDateObj,
     items,
     focusedId,
-    itemCountText: `${items.length} khoản`,
+    itemCountText: `${validCount} khoản`,
     totalAmount,
     totalAmountFormatted,
     formulaText,

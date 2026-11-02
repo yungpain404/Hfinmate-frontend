@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { useDailyExpenseViewModel } from '../viewmodels/useDailyExpenseViewModel';
@@ -23,16 +23,19 @@ import { getCategoryByName } from '../models/expenseCategory.model';
 import { theme } from '../theme';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type ScreenRouteProp = RouteProp<RootStackParamList, 'AddTransaction'>;
 
 export const AddTransactionScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<ScreenRouteProp>();
+  const initialDateParam = route.params?.date;
   const { user } = useAuthViewModel();
   const [isDatePickerVisible, setIsDatePickerVisible] = useState<boolean>(false);
   const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState<boolean>(false);
   const [pickerItemId, setPickerItemId] = useState<string | null>(null);
 
-  // Bind ViewModel
+  // Bind ViewModel with optional route date param
   const {
     displayDate,
     currentDateObj,
@@ -52,20 +55,31 @@ export const AddTransactionScreen: React.FC = () => {
     handleAddRow,
     handleRemoveRow,
     handleSave,
-  } = useDailyExpenseViewModel();
+  } = useDailyExpenseViewModel(initialDateParam);
+
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const isSubmittingRef = useRef<boolean>(false);
 
   const onSave = async () => {
-    const success = await handleSave(() => {
-      Alert.alert('Thành công', 'Đã lưu chi tiêu ngày thành công!', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
-    });
+    if (isSubmittingRef.current || isSaving) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      const success = await handleSave(() => {
+        Alert.alert('Thành công', 'Đã lưu chi tiêu ngày thành công!', [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      });
 
-    if (!success) {
-      Alert.alert('Lưu thất bại', 'Vui lòng kiểm tra lại các khoản chi.');
+      if (!success) {
+        Alert.alert('Lưu thất bại', 'Vui lòng kiểm tra lại các khoản chi.');
+      }
+    } finally {
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -275,9 +289,12 @@ export const AddTransactionScreen: React.FC = () => {
           {/* 8. Save Button */}
           <TouchableOpacity
             activeOpacity={0.88}
-            style={styles.saveBtn}
+            style={[
+              styles.saveBtn,
+              (isSaving || isSubmitting) && { opacity: 0.6 },
+            ]}
             onPress={onSave}
-            disabled={isSaving}
+            disabled={isSaving || isSubmitting}
           >
             <Ionicons
               name="checkmark"
@@ -286,7 +303,7 @@ export const AddTransactionScreen: React.FC = () => {
               style={{ marginRight: 6 }}
             />
             <Text style={styles.saveBtnText}>
-              {isSaving ? 'Đang lưu...' : 'Lưu chi tiêu ngày'}
+              {isSaving || isSubmitting ? 'Đang lưu...' : 'Lưu chi tiêu ngày'}
             </Text>
           </TouchableOpacity>
 

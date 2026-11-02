@@ -10,7 +10,7 @@ export type BottomTabParamList = {
 
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<BottomTabParamList>;
-  AddTransaction: undefined;
+  AddTransaction: { date?: string } | undefined;
   Transactions: undefined;
   Profile: undefined;
 };

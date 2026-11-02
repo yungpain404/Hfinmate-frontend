@@ -84,7 +84,15 @@ export const TransactionsScreen: React.FC = () => {
     const isIncome = item.type === 'income';
 
     return (
-      <View style={styles.cardItem}>
+      <TouchableOpacity
+        style={styles.cardItem}
+        activeOpacity={0.75}
+        onPress={() => {
+          if (item.date) {
+            navigation.navigate('AddTransaction', { date: item.date });
+          }
+        }}
+      >
         <View
           style={[
             styles.typeIndicator,
@@ -136,7 +144,7 @@ export const TransactionsScreen: React.FC = () => {
             <Ionicons name="trash-outline" size={16} color={theme.colors.textMuted} />
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
