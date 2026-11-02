@@ -17,29 +17,36 @@ interface YearPickerModalProps {
   onSelect: (year: string) => void;
 }
 
-const CURRENT_YEAR = new Date().getFullYear();
-const YEARS = [
-  `Năm ${CURRENT_YEAR}`,
-  `Năm ${CURRENT_YEAR - 1}`,
-  `Năm ${CURRENT_YEAR - 2}`,
-  `Năm ${CURRENT_YEAR - 3}`,
-  'Năm chưa xác định',
-];
+const buildYears = (): string[] => {
+  const current = new Date().getFullYear();
+  return [
+    `Năm ${current}`,
+    `Năm ${current - 1}`,
+    `Năm ${current - 2}`,
+    `Năm ${current - 3}`,
+    'Năm chưa xác định',
+  ];
+};
 
 export const YearPickerModal: React.FC<YearPickerModalProps> = ({
   visible,
-  selectedYear = `Năm ${CURRENT_YEAR}`,
+  selectedYear,
   onClose,
   onSelect,
 }) => {
-  const [currentSelected, setCurrentSelected] = useState<string>(selectedYear);
+  // Built on every render so a session crossing New Year never keeps offering
+  // the year list captured when the bundle loaded.
+  const years = buildYears();
+  const activeYear = selectedYear || years[0];
+
+  const [currentSelected, setCurrentSelected] = useState<string>(activeYear);
 
   useEffect(() => {
     if (visible) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCurrentSelected(selectedYear || `Năm ${CURRENT_YEAR}`);
+      setCurrentSelected(activeYear);
     }
-  }, [visible, selectedYear]);
+  }, [visible, activeYear]);
 
   const handleConfirm = () => {
     onSelect(currentSelected);
@@ -67,7 +74,7 @@ export const YearPickerModal: React.FC<YearPickerModalProps> = ({
 
               {/* Year list */}
               <View style={styles.yearList}>
-                {YEARS.map((y) => {
+                {years.map((y) => {
                   const isSelected = currentSelected === y;
                   return (
                     <TouchableOpacity

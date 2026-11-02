@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { YearAnalyticsData } from '../models/analytics.model';
 import { analyticsRepository } from '../services/repositories/analyticsRepository';
+import { useMonthRollover } from '../hooks';
+import { currentMonthRef } from '../utils/month';
+import { expenseEvents } from '../services/eventBus';
 
 export type AnalyticsPeriodTab = 'month' | 'year';
-
-const CURRENT_YEAR = new Date().getFullYear();
-const DEFAULT_RECORDED_MONTH = new Date().getMonth() + 1;
 
 /**
  * ViewModel: useAnalyticsViewModel
@@ -13,9 +13,15 @@ const DEFAULT_RECORDED_MONTH = new Date().getMonth() + 1;
  */
 export function useAnalyticsViewModel() {
   const [selectedTab, setSelectedTab] = useState<AnalyticsPeriodTab>('month');
-  const [selectedYear, setSelectedYear] = useState<string>(`Năm ${CURRENT_YEAR}`);
-  const [selectedMonth, setSelectedMonth] = useState<number>(DEFAULT_RECORDED_MONTH);
-  const [selectedYearNumber, setSelectedYearNumber] = useState<number>(CURRENT_YEAR);
+  const [selectedYearNumber, setSelectedYearNumber] = useState<number>(
+    () => new Date().getFullYear()
+  );
+  const [selectedMonth, setSelectedMonth] = useState<number>(
+    () => new Date().getMonth() + 1
+  );
+  const [selectedYear, setSelectedYear] = useState<string>(
+    () => `Năm ${new Date().getFullYear()}`
+  );
 
   const [data, setData] = useState<YearAnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -43,7 +49,23 @@ export function useAnalyticsViewModel() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
+    const unsubscribe = expenseEvents.subscribe(() => {
+      loadData(true);
+    });
+    return unsubscribe;
   }, [loadData]);
+
+  // The statistics tab stays mounted between month boundaries: when a new
+  // month begins, drop last month's figures and jump to the fresh month.
+  useMonthRollover(
+    useCallback(() => {
+      const ref = currentMonthRef();
+      setData(null);
+      setSelectedMonth(ref.month);
+      setSelectedYearNumber(ref.year);
+      setSelectedYear(`Năm ${ref.year}`);
+    }, [])
+  );
 
   const handleRefresh = useCallback(() => {
     return loadData(true);

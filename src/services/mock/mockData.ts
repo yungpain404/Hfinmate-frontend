@@ -3,39 +3,45 @@ import { BudgetGoal, WalletSummary } from '../../models/wallet.model';
 import { User } from '../../models/auth.model';
 import { HomeDashboardData } from '../../models/dashboard.model';
 
-const now = new Date();
-const currentMonth = now.getMonth() + 1;
-const currentYear = now.getFullYear();
-const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-
 export const INITIAL_USER: User | null = null;
 
-export const INITIAL_DASHBOARD_DATA: HomeDashboardData = {
-  monthName: `Tháng ${currentMonth}`,
-  recordedDaysCount: 0,
-  calendarDaysCount: daysInMonth,
+/**
+ * Blank dashboard for "now". Built on every call so the month label never
+ * stays frozen on the month the bundle happened to load in.
+ */
+export function createInitialDashboardData(): HomeDashboardData {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
-  totalExpense: 0,
-  totalExpenseNote: '',
-  dailyAverage: 0,
+  return {
+    monthName: `Tháng ${currentMonth}`,
+    recordedDaysCount: 0,
+    calendarDaysCount: daysInMonth,
 
-  dailyCategoryTotal: 0,
-  dailyCategoryDaysCount: 0,
+    totalExpense: 0,
+    totalExpenseNote: '',
+    dailyAverage: 0,
 
-  fixedCategoryTotal: 0,
-  fixedCategoryNote: 'Chưa nhập',
+    dailyCategoryTotal: 0,
+    dailyCategoryDaysCount: 0,
 
-  rhythmMaxAmount: 0,
-  rhythmNote: '',
-  rhythmBars: Array.from({ length: daysInMonth }, (_, i) => ({
-    day: i + 1,
-    amount: 0,
-    amountInThousands: 0,
-    hasRecord: false,
-    isPeak: false,
-  })),
-  recentDays: [],
-};
+    fixedCategoryTotal: 0,
+    fixedCategoryNote: 'Chưa nhập',
+
+    rhythmMaxAmount: 0,
+    rhythmNote: '',
+    rhythmBars: Array.from({ length: daysInMonth }, (_, i) => ({
+      day: i + 1,
+      amount: 0,
+      amountInThousands: 0,
+      hasRecord: false,
+      isPeak: false,
+    })),
+    recentDays: [],
+  };
+}
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [];
 

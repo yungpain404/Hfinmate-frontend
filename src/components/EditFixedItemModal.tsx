@@ -46,12 +46,12 @@ export const EditFixedItemModal: React.FC<EditFixedItemModalProps> = ({
           ? new Intl.NumberFormat('vi-VN').format(item.amount)
           : ''
       );
-      if (item.extraNote) {
+      if (item.extraNote && item.extraNote.title && !item.extraNote.title.toLowerCase().includes('nguyên')) {
         setHasNote(true);
         setNoteTitle(item.extraNote.title);
-        setNoteDesc(item.extraNote.description);
+        setNoteDesc(item.extraNote.description || '');
       } else {
-        setHasNote(true);
+        setHasNote(false);
         setNoteTitle('');
         setNoteDesc('');
       }
@@ -174,15 +174,15 @@ export const EditFixedItemModal: React.FC<EditFixedItemModalProps> = ({
                           style={styles.noteTitleInput}
                           value={noteTitle}
                           onChangeText={setNoteTitle}
-                          placeholder="Tiêu đề ghi chú (vd: Nợ Nguyên 10.000đ)"
-                          placeholderTextColor="#B45309"
+                          placeholder="Tiêu đề ghi chú..."
+                          placeholderTextColor="#92400E"
                         />
                         <TextInput
                           style={styles.noteDescInput}
                           value={noteDesc}
                           onChangeText={setNoteDesc}
                           placeholder="Mô tả ghi chú (chưa cộng vào tổng)..."
-                          placeholderTextColor="#B45309"
+                          placeholderTextColor="#92400E"
                           multiline
                         />
                       </View>

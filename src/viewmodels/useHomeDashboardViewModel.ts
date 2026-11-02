@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { HomeDashboardData } from '../models/dashboard.model';
 import { dashboardRepository } from '../services/repositories/dashboardRepository';
-import { INITIAL_DASHBOARD_DATA } from '../services/mock/mockData';
+import { createInitialDashboardData } from '../services/mock/mockData';
+import { useMonthRollover } from '../hooks';
 import { formatVND } from './useWalletViewModel';
+
+import { expenseEvents } from '../services/eventBus';
 
 export function formatVNDNumber(amount: number): string {
   return new Intl.NumberFormat('vi-VN').format(amount);
@@ -13,7 +16,9 @@ export function formatVNDNumber(amount: number): string {
  * Strictly encapsulates state and business formatting for the first screen (Dashboard)
  */
 export function useHomeDashboardViewModel() {
-  const [data, setData] = useState<HomeDashboardData | null>(INITIAL_DASHBOARD_DATA);
+  const [data, setData] = useState<HomeDashboardData | null>(() =>
+    createInitialDashboardData()
+  );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +42,19 @@ export function useHomeDashboardViewModel() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
+    const unsubscribe = expenseEvents.subscribe(() => {
+      loadData(true);
+    });
+    return unsubscribe;
   }, [loadData]);
+
+  // The home screen stays mounted across midnight: reload as soon as the
+  // calendar month changes so last month's totals stop being displayed.
+  useMonthRollover(
+    useCallback(() => {
+      loadData(true);
+    }, [loadData])
+  );
 
   const handleRefresh = useCallback(() => {
     return loadData(true);

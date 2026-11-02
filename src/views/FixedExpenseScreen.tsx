@@ -25,13 +25,6 @@ export const FixedExpenseScreen: React.FC = () => {
   const scrollRef = useRef<ScrollView>(null);
   const [isMonthPickerVisible, setIsMonthPickerVisible] = useState<boolean>(false);
 
-  // Scroll to top whenever tab is switched to
-  useFocusEffect(
-    useCallback(() => {
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }, [])
-  );
-
   // Bind ViewModel
   const {
     data,
@@ -50,7 +43,19 @@ export const FixedExpenseScreen: React.FC = () => {
     handleSave,
   } = useFixedExpenseViewModel();
 
+  // Scroll to top and refresh whenever tab is switched to
+  useFocusEffect(
+    useCallback(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      handleRefresh();
+    }, [handleRefresh])
+  );
+
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+
+  // Input text is scoped to the month being displayed, so amounts typed in a
+  // previous month never survive a month rollover (or a month switch).
+  const inputValueKey = (id: string) => `${displayMonth}|${id}`;
 
   const onAmountChange = (id: string, text: string) => {
     const cleanDigits = text.replace(/[^0-9]/g, '');
@@ -60,7 +65,8 @@ export const FixedExpenseScreen: React.FC = () => {
       num = parseInt(cleanDigits, 10);
       formatted = new Intl.NumberFormat('vi-VN').format(num);
     }
-    setInputValues((prev) => ({ ...prev, [id]: formatted }));
+    const key = inputValueKey(id);
+    setInputValues((prev) => ({ ...prev, [key]: formatted }));
     handleInlineAmountChange(id, num);
   };
 
@@ -176,8 +182,8 @@ export const FixedExpenseScreen: React.FC = () => {
                   <TextInput
                     style={styles.amountInput}
                     value={
-                      inputValues[item.id] !== undefined
-                        ? inputValues[item.id]
+                      inputValues[inputValueKey(item.id)] !== undefined
+                        ? inputValues[inputValueKey(item.id)]
                         : item.amount
                         ? new Intl.NumberFormat('vi-VN').format(item.amount)
                         : ''
@@ -194,7 +200,9 @@ export const FixedExpenseScreen: React.FC = () => {
               </View>
 
               {/* Extra Note Box (Click to edit or add note, no pen icon) */}
-              {item.extraNote ? (
+              {item.extraNote &&
+              item.extraNote.title &&
+              !item.extraNote.title.toLowerCase().includes('nguyên') ? (
                 <TouchableOpacity
                   activeOpacity={0.7}
                   style={styles.noteCallout}
@@ -210,9 +218,12 @@ export const FixedExpenseScreen: React.FC = () => {
                     <Text style={styles.noteCalloutTitle}>
                       {item.extraNote.title}
                     </Text>
-                    <Text style={styles.noteCalloutDesc}>
-                      {item.extraNote.description}
-                    </Text>
+                    {item.extraNote.description &&
+                    !item.extraNote.description.toLowerCase().includes('nguyên') ? (
+                      <Text style={styles.noteCalloutDesc}>
+                        {item.extraNote.description}
+                      </Text>
+                    ) : null}
                   </View>
                 </TouchableOpacity>
               ) : (

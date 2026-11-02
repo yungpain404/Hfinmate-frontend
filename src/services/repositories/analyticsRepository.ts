@@ -9,16 +9,19 @@ import {
 import { ApiResponse } from '../../models/api.model';
 import { apiClient } from '../api/apiClient';
 import { getCategoryByName } from '../../models/expenseCategory.model';
-import { storageService } from '../storage/storageService';
+import { monthLabel } from '../../utils/month';
+import { setScopedItem } from '../storage/accountScope';
 import { fixedExpenseRepository } from './fixedExpenseRepository';
 import { dashboardRepository } from './dashboardRepository';
 import { dailyExpenseRepository } from './dailyExpenseRepository';
 
 const ANALYTICS_STORAGE_KEY = 'year_analytics_data';
 
-const CURRENT_YEAR_NUM = new Date().getFullYear();
-const CURRENT_MONTH_NUM = new Date().getMonth() + 1;
-const DEFAULT_YEAR_LABEL = `Năm ${CURRENT_YEAR_NUM}`;
+// Evaluated per call: a session that crosses into a new month (or a new year)
+// must never keep reporting the period captured when the bundle loaded.
+const getCurrentYearNum = (): number => new Date().getFullYear();
+const getCurrentMonthNum = (): number => new Date().getMonth() + 1;
+const getDefaultYearLabel = (): string => `Năm ${getCurrentYearNum()}`;
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
 
@@ -29,8 +32,8 @@ export interface IAnalyticsRepository {
 
 class AnalyticsRepository implements IAnalyticsRepository {
   async getMonthCalendarData(
-    month: number = CURRENT_MONTH_NUM,
-    year: number = CURRENT_YEAR_NUM
+    month: number = getCurrentMonthNum(),
+    year: number = getCurrentYearNum()
   ): Promise<MonthCalendarData> {
     try {
       const response = await apiClient.get<ApiResponse<MonthCalendarData>>('/analytics/calendar', {
@@ -116,12 +119,12 @@ class AnalyticsRepository implements IAnalyticsRepository {
   }
 
   async getYearAnalytics(
-    year: string = DEFAULT_YEAR_LABEL,
-    month: number = CURRENT_MONTH_NUM
+    year: string = getDefaultYearLabel(),
+    month: number = getCurrentMonthNum()
   ): Promise<YearAnalyticsData> {
-    const targetYear = year || DEFAULT_YEAR_LABEL;
+    const targetYear = year || getDefaultYearLabel();
     const yearMatch = targetYear.match(/\d{4}/);
-    const targetYearNum = yearMatch ? parseInt(yearMatch[0], 10) : CURRENT_YEAR_NUM;
+    const targetYearNum = yearMatch ? parseInt(yearMatch[0], 10) : getCurrentYearNum();
 
     try {
       const response = await apiClient.get<ApiResponse<YearAnalyticsData>>('/analytics/year', {
@@ -129,7 +132,7 @@ class AnalyticsRepository implements IAnalyticsRepository {
       });
       if (response.data && response.data.data) {
         const data = response.data.data;
-        await storageService.setItem(`${ANALYTICS_STORAGE_KEY}_${targetYear}`, data);
+        await setScopedItem(`${ANALYTICS_STORAGE_KEY}_${targetYear}_${month}`, data);
         return data;
       }
     } catch {
@@ -139,7 +142,8 @@ class AnalyticsRepository implements IAnalyticsRepository {
     // Dynamic aggregation: Tiền sinh hoạt (hàng ngày) + Khoản chi cố định
     const [dashboardData, fixedData, recordedSheets, calendarData] = await Promise.all([
       dashboardRepository.getDashboardData(),
-      fixedExpenseRepository.getFixedExpenses(),
+      // Fixed expenses of the selected month - never last month's sheet
+      fixedExpenseRepository.getFixedExpenses(monthLabel({ year: targetYearNum, month })),
       dailyExpenseRepository.getAllRecordedSheets(),
       this.getMonthCalendarData(month, targetYearNum),
     ]);
@@ -176,15 +180,35 @@ class AnalyticsRepository implements IAnalyticsRepository {
               const amt = it.amount || 0;
               if (amt <= 0) continue;
               const normCat = (it.category || '').toLowerCase().trim();
-              if (normCat.includes('ăn') || normCat.includes('uống')) {
+              if (
+                normCat.includes('ăn') ||
+                normCat.includes('uống') ||
+                normCat.includes('thức ăn') ||
+                normCat === 'food' ||
+                normCat.includes('cơm')
+              ) {
                 foodAmount += amt;
-              } else if (normCat.includes('chuyển') || normCat.includes('xe')) {
+              } else if (
+                normCat.includes('chuyển') ||
+                normCat.includes('xe') ||
+                normCat === 'transport'
+              ) {
                 dailyGrabAmount += amt;
-              } else if (normCat.includes('cá nhân')) {
+              } else if (
+                normCat.includes('cá nhân') ||
+                normCat === 'shopping' ||
+                normCat === 'personal'
+              ) {
                 personalAmount += amt;
-              } else if (normCat.includes('photo')) {
+              } else if (
+                normCat.includes('photo') ||
+                normCat === 'education'
+              ) {
                 photoAmount += amt;
-              } else if (normCat.includes('giải trí')) {
+              } else if (
+                normCat.includes('giải trí') ||
+                normCat === 'entertainment'
+              ) {
                 entertainmentAmount += amt;
               } else {
                 otherAmount += amt;
@@ -302,7 +326,7 @@ class AnalyticsRepository implements IAnalyticsRepository {
       infoNote: `Tổng hợp chi tiêu Tháng ${month}, ${targetYearNum}.`,
     };
 
-    const livingTotal = dashboardData?.dailyCategoryTotal ?? (foodAmount + personalAmount + photoAmount + entertainmentAmount + otherAmount);
+    const livingTotal = foodAmount + dailyGrabAmount + personalAmount + photoAmount + entertainmentAmount + otherAmount;
     const totalMonth = totalCategoryExpense;
 
     const months: MonthAnalyticsItem[] = Array.from({ length: 12 }, (_, i) => {
@@ -361,8 +385,8 @@ class AnalyticsRepository implements IAnalyticsRepository {
       calendarData,
     };
 
-    await storageService.setItem(
-      `${ANALYTICS_STORAGE_KEY}_${targetYear}`,
+    await setScopedItem(
+      `${ANALYTICS_STORAGE_KEY}_${targetYear}_${month}`,
       computedData
     );
 
