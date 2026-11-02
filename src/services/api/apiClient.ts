@@ -16,7 +16,7 @@ export const BASE_URL = getBaseUrl();
 // eslint-disable-next-line import/no-named-as-default-member
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 35000,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
