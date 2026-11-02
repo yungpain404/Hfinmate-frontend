@@ -10,3 +10,4 @@ export * from './repositories/analyticsRepository';
 export * from './repositories/fixedExpenseRepository';
 export * from './firebase/firebaseConfig';
 export * from './firebase/firebaseAuthService';
+export * from './eventBus';

@@ -3,7 +3,11 @@ import { ApiResponse } from '../../models/api.model';
 import { apiClient } from '../api/apiClient';
 import { transactionRepository } from './transactionRepository';
 import { INITIAL_BUDGET_GOALS } from '../mock/mockData';
-import { storageService } from '../storage/storageService';
+import {
+  getScopedItem,
+  setScopedItem,
+  migrateLegacyKey,
+} from '../storage/accountScope';
 
 const BUDGET_KEY = 'budget_goals_data';
 
@@ -84,16 +88,18 @@ class WalletRepository implements IWalletRepository {
       const response = await apiClient.get<ApiResponse<BudgetGoal[]>>('/wallet/goals');
       if (response.data && response.data.data) {
         const goals = response.data.data;
-        await storageService.setItem(BUDGET_KEY, goals);
+        await setScopedItem(BUDGET_KEY, goals);
         return goals;
       }
     } catch {
       // Fallback
     }
 
-    const stored = await storageService.getItem<BudgetGoal[]>(BUDGET_KEY);
+    const migrated = await migrateLegacyKey<BudgetGoal[]>(BUDGET_KEY);
+    if (migrated !== null && migrated !== undefined) return migrated;
+    const stored = await getScopedItem<BudgetGoal[]>(BUDGET_KEY);
     if (!stored) {
-      await storageService.setItem(BUDGET_KEY, INITIAL_BUDGET_GOALS);
+      await setScopedItem(BUDGET_KEY, INITIAL_BUDGET_GOALS);
       return INITIAL_BUDGET_GOALS;
     }
     return stored;

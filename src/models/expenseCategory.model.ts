@@ -66,18 +66,83 @@ export const EXPENSE_CATEGORIES: ExpenseCategoryDef[] = ALL_EXPENSE_CATEGORIES.f
   (c) => c.name !== 'Sinh hoạt'
 );
 
+export function mapCategoryNameToBackendId(
+  name?: string
+): 'food' | 'transport' | 'bills' | 'shopping' | 'education' | 'entertainment' | 'other' {
+  if (!name) return 'food';
+  const norm = name.trim().toLowerCase();
+  if (
+    norm === 'food' ||
+    norm.includes('ăn') ||
+    norm.includes('uống') ||
+    norm.includes('thức ăn') ||
+    norm.includes('cơm')
+  ) {
+    return 'food';
+  }
+  if (
+    norm === 'transport' ||
+    norm.includes('chuyển') ||
+    norm.includes('xe') ||
+    norm.includes('xăng')
+  ) {
+    return 'transport';
+  }
+  if (
+    norm === 'bills' ||
+    norm === 'living' ||
+    norm.includes('sinh hoạt') ||
+    norm.includes('nước') ||
+    norm.includes('trọ')
+  ) {
+    return 'bills';
+  }
+  if (
+    norm === 'shopping' ||
+    norm === 'personal' ||
+    norm.includes('cá nhân') ||
+    norm.includes('mua sắm')
+  ) {
+    return 'shopping';
+  }
+  if (
+    norm === 'education' ||
+    norm === 'photo' ||
+    norm.includes('photo') ||
+    norm.includes('in') ||
+    norm.includes('giáo dục')
+  ) {
+    return 'education';
+  }
+  if (norm === 'entertainment' || norm.includes('giải trí')) {
+    return 'entertainment';
+  }
+  return 'other';
+}
+
 export function getCategoryByName(name?: string): ExpenseCategoryDef {
   if (!name) return EXPENSE_CATEGORIES[0];
   const normalized = name.trim().toLowerCase();
+
+  // Explicit check for Food / Thức ăn / Ăn uống
+  if (
+    normalized === 'food' ||
+    normalized === 'thức ăn' ||
+    normalized === 'thuc an' ||
+    normalized.includes('ăn') ||
+    normalized.includes('uống') ||
+    normalized.includes('cơm') ||
+    normalized.includes('bún')
+  ) {
+    return ALL_EXPENSE_CATEGORIES[0]; // Ăn uống
+  }
+
   const found = ALL_EXPENSE_CATEGORIES.find(
     (c) => c.name.toLowerCase() === normalized || c.id.toLowerCase() === normalized
   );
   if (found) return found;
 
   // Partial match heuristic
-  if (normalized.includes('ăn') || normalized.includes('uống') || normalized.includes('cơm') || normalized.includes('bún')) {
-    return ALL_EXPENSE_CATEGORIES[0];
-  }
   if (normalized.includes('xe') || normalized.includes('xăng') || normalized.includes('grab')) {
     return ALL_EXPENSE_CATEGORIES[1];
   }
