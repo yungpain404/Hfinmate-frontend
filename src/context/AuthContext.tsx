@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { Platform } from 'react-native';
 import { auth } from '../config/firebase';
+import { firebaseAuthService } from '../services/firebase/firebaseAuthService';
 
 /**
  * Maps Firebase Auth error codes to user-friendly Vietnamese messages
@@ -146,11 +147,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setCurrentUser(result.user);
         return result.user;
       } else {
-        // Native / Expo mobile environment fallback
-        const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        setCurrentUser(result.user);
-        return result.user;
+        // Native / Mobile environment
+        const profile = await firebaseAuthService.signInWithAnotherGoogleAccount();
+        if (auth.currentUser) {
+          setCurrentUser(auth.currentUser);
+          return auth.currentUser;
+        }
+        const userObj = {
+          uid: profile.uid,
+          email: profile.email,
+          displayName: profile.displayName,
+          photoURL: profile.photoURL,
+          getIdToken: async () => profile.idToken || '',
+        } as unknown as FirebaseUser;
+        setCurrentUser(userObj);
+        return userObj;
       }
     } catch (err: any) {
       const friendlyMessage = mapFirebaseAuthError(err.code || '');

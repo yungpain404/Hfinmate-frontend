@@ -22,7 +22,7 @@ const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isGoogleModalVisible: false,
-  isLoading: false,
+  isLoading: true,
   error: null,
 
   initAuth: async () => {
