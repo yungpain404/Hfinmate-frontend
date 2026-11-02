@@ -25,6 +25,161 @@ const getDefaultYearLabel = (): string => `Năm ${getCurrentYearNum()}`;
 
 const formatVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
 
+/** Fallback color the backend uses for the "Cố định" category row. */
+const FIXED_ROW_COLOR = '#8E9F96';
+
+/**
+ * Rebuilds the "Tiền đi đâu?" section for the requested month.
+ *
+ * Rows built from daily sheets are date-scoped and stay as they are; the
+ * "Cố định" row is built by the backend from the single fixed sheet it holds,
+ * so it is replaced with the fixed total of the requested month - or dropped
+ * when that month has none.
+ */
+const rebuildCategorySection = (
+  section: CategoryBreakdownSectionData | undefined,
+  fixedTotal: number,
+  month: number,
+  yearNum: number
+): CategoryBreakdownSectionData => {
+  const source = section && Array.isArray(section.categories) ? section.categories : [];
+  const isFixedRow = (c: CategoryBreakdownItem) => /cố\s*định/i.test(c.name);
+
+  const rows: CategoryBreakdownItem[] = source.filter((c) => !isFixedRow(c));
+  if (fixedTotal > 0) {
+    rows.push({
+      id: 'cat_Cố định',
+      name: 'Cố định',
+      color: FIXED_ROW_COLOR,
+      amount: fixedTotal,
+      amountFormatted: `${formatVND(fixedTotal)}đ`,
+      percentage: 0,
+      percentageFormatted: '0%',
+      note: 'Các khoản cố định đã nhập',
+    });
+  }
+
+  rows.sort((a, b) => b.amount - a.amount);
+
+  const totalRecordedAmount = rows.reduce((sum, c) => sum + c.amount, 0);
+  const categories = rows.map((c) => {
+    const pct = totalRecordedAmount > 0 ? (c.amount / totalRecordedAmount) * 100 : 0;
+    const rounded = Math.round(pct * 10) / 10;
+    return {
+      ...c,
+      percentage: rounded,
+      percentageFormatted: `${rounded.toFixed(1).replace('.', ',')}%`,
+    };
+  });
+
+  const dominant = categories.find((c) => c.amount > 0) || {
+    name: 'Chưa có khoản chi',
+    percentage: 0,
+    percentageFormatted: '0%',
+  };
+
+  return {
+    title: section?.title ?? 'Tiền đi đâu?',
+    headerLinkText: section?.headerLinkText ?? '',
+    dominantCategoryName: dominant.name,
+    dominantPercentage: dominant.percentage,
+    dominantPercentageFormatted: dominant.percentageFormatted,
+    dominantTitle:
+      dominant.percentage >= 40 && dominant.percentage > 0
+        ? `${dominant.name} chiếm phần lớn`
+        : totalRecordedAmount > 0
+        ? `${dominant.name} cao nhất`
+        : 'Chưa có dữ liệu chi tiêu',
+    dominantSubtitle:
+      totalRecordedAmount > 0
+        ? `Phân bổ trên ${formatVND(totalRecordedAmount)}đ đã ghi nhận, gồm cả chi cố định.`
+        : 'Hãy bắt đầu ghi lại các khoản chi để xem phân bổ.',
+    totalRecordedAmount,
+    totalRecordedAmountFormatted: `${formatVND(totalRecordedAmount)}đ`,
+    categories,
+    infoNote:
+      totalRecordedAmount > 0
+        ? `Tổng hợp chi tiêu Tháng ${month}, ${yearNum}.`
+        : `Chưa có khoản chi nào được ghi nhận trong Tháng ${month}, ${yearNum}.`,
+  };
+};
+
+/**
+ * Re-scopes a backend analytics answer to the requested month.
+ *
+ * The backend computes its totals from the single fixed sheet it currently
+ * holds, so after a month rollover those figures still contain the previous
+ * month's fixed expenses. Living spend comes from `calendarData`, which is
+ * date-scoped, and fixed spend is re-read for the requested month, so every
+ * month-scoped figure below restarts from a trustworthy base instead of
+ * carrying last month's money over.
+ */
+const normalizeServerPeriod = async (
+  data: YearAnalyticsData,
+  calendarData: MonthCalendarData,
+  month: number,
+  yearNum: number
+): Promise<YearAnalyticsData> => {
+  const fixedData = await fixedExpenseRepository.getFixedExpenses(
+    monthLabel({ year: yearNum, month })
+  );
+  // Items are the source of truth: a stored `totalAmount` can lag behind.
+  const fixedTotal = Array.isArray(fixedData?.items)
+    ? fixedData.items.reduce((sum, it) => sum + (it.amount || 0), 0)
+    : fixedData?.totalAmount ?? 0;
+
+  const livingTotal = calendarData.totalExpense || 0;
+  const monthTotal = livingTotal + fixedTotal;
+  const daysInMonth = calendarData.daysInMonth || new Date(yearNum, month, 0).getDate();
+
+  const months: MonthAnalyticsItem[] = data.months.map((m) =>
+    m.month === month
+      ? {
+          ...m,
+          amount: monthTotal,
+          amountMillions: monthTotal > 0 ? Number((monthTotal / 1000000).toFixed(3)) : 0,
+          hasData: monthTotal > 0,
+          amountFormatted: monthTotal > 0 ? `${formatVND(monthTotal)}đ` : 'Chưa có dữ liệu',
+        }
+      : m
+  );
+
+  const totalYearExpense = months.reduce((sum, m) => sum + m.amount, 0);
+  const recordedMonthsCount = months.filter((m) => m.hasData || m.amount > 0).length;
+  const dailyAverage = daysInMonth > 0 ? Math.round(monthTotal / daysInMonth) : 0;
+  const monthlyAverage =
+    recordedMonthsCount > 0 ? Math.round(totalYearExpense / recordedMonthsCount) : 0;
+  const chartMaxMillions = Math.max(2, Math.ceil(totalYearExpense / 1000000) || 2);
+
+  return {
+    ...data,
+    totalYearExpense,
+    totalYearExpenseFormatted: formatVND(totalYearExpense),
+    totalMonthExpense: monthTotal,
+    totalMonthExpenseFormatted: formatVND(monthTotal),
+
+    recordedMonthsBadge: `${recordedMonthsCount}/12 tháng có dữ liệu`,
+    recordedMonthsCount,
+
+    livingExpenseTotal: livingTotal,
+    livingExpenseFormatted: `${formatVND(livingTotal)}đ`,
+    fixedExpenseTotal: fixedTotal,
+    fixedExpenseFormatted: `${formatVND(fixedTotal)}đ`,
+
+    monthlyAverage,
+    monthlyAverageFormatted: `${formatVND(monthlyAverage)}đ`,
+    monthlyAverageSub: `${formatVND(totalYearExpense)}đ ÷ ${Math.max(1, recordedMonthsCount)} tháng`,
+
+    dailyAverage,
+    dailyAverageFormatted: formatVND(dailyAverage),
+    dailyAverageSub: `${formatVND(monthTotal)}đ ÷ ${daysInMonth} ngày lịch của tháng ${month}`,
+
+    chartMaxMillions,
+    months,
+    categorySection: rebuildCategorySection(data.categorySection, fixedTotal, month, yearNum),
+  };
+};
+
 export interface IAnalyticsRepository {
   getYearAnalytics(year?: string, month?: number): Promise<YearAnalyticsData>;
   getMonthCalendarData(month?: number, year?: number): Promise<MonthCalendarData>;
@@ -132,8 +287,22 @@ class AnalyticsRepository implements IAnalyticsRepository {
       });
       if (response.data && response.data.data) {
         const data = response.data.data;
-        await setScopedItem(`${ANALYTICS_STORAGE_KEY}_${targetYear}_${month}`, data);
-        return data;
+        const cal = data.calendarData;
+        // Only accept an answer whose period matches what was asked: the
+        // backend can echo a stale calendar, and its totals are re-scoped to
+        // the requested month below. Anything else falls through to the local
+        // calculation so the new month always restarts from zero.
+        const periodMatches =
+          !!cal &&
+          cal.month === month &&
+          cal.year === targetYearNum &&
+          Array.isArray(data.months) &&
+          data.months.length === 12;
+        if (periodMatches) {
+          const normalized = await normalizeServerPeriod(data, cal, month, targetYearNum);
+          await setScopedItem(`${ANALYTICS_STORAGE_KEY}_${targetYear}_${month}`, normalized);
+          return normalized;
+        }
       }
     } catch {
       // Fallback local calculation
@@ -354,6 +523,10 @@ class AnalyticsRepository implements IAnalyticsRepository {
       selectedYear: targetYear,
       totalYearExpense: totalMonth,
       totalYearExpenseFormatted: formatVND(totalMonth),
+      // Month tab hero: the selected month only (living + fixed), so it
+      // restarts at zero for a brand-new month.
+      totalMonthExpense: totalMonth,
+      totalMonthExpenseFormatted: formatVND(totalMonth),
       expenseNote: `Gồm sinh hoạt (${formatVND(livingTotal)}đ) + cố định (${formatVND(fixedTotal)}đ)`,
       recordedMonthsBadge: `${recordedMonthsCount}/12 tháng có dữ liệu`,
       recordedMonthsCount,

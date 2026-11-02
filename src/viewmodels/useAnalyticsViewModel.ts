@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { YearAnalyticsData } from '../models/analytics.model';
 import { analyticsRepository } from '../services/repositories/analyticsRepository';
 import { useMonthRollover } from '../hooks';
@@ -28,7 +28,12 @@ export function useAnalyticsViewModel() {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Monotonic id: a slow response for a previous month must never overwrite
+  // the figures of the month the user is looking at now.
+  const requestIdRef = useRef(0);
+
   const loadData = useCallback(async (isRefresh = false) => {
+    const requestId = ++requestIdRef.current;
     try {
       if (isRefresh) {
         setIsRefreshing(true);
@@ -37,12 +42,16 @@ export function useAnalyticsViewModel() {
       }
       setError(null);
       const res = await analyticsRepository.getYearAnalytics(selectedYear, selectedMonth);
+      if (requestId !== requestIdRef.current) return; // superseded by a newer request
       setData(res);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError((err as Error).message || 'Không thể tải dữ liệu thống kê');
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   }, [selectedYear, selectedMonth]);
 
@@ -60,11 +69,19 @@ export function useAnalyticsViewModel() {
   useMonthRollover(
     useCallback(() => {
       const ref = currentMonthRef();
+      // Invalidate any request still in flight for the old month.
+      requestIdRef.current++;
       setData(null);
+      const yearLabel = `Năm ${ref.year}`;
+      const alreadyOnNewMonth = ref.month === selectedMonth && yearLabel === selectedYear;
       setSelectedMonth(ref.month);
       setSelectedYearNumber(ref.year);
-      setSelectedYear(`Năm ${ref.year}`);
-    }, [])
+      setSelectedYear(yearLabel);
+      // If the selection already pointed at the new month, `loadData` keeps its
+      // identity and the effect below never re-runs - reload explicitly so the
+      // screen doesn't stay empty after `setData(null)`.
+      if (alreadyOnNewMonth) loadData();
+    }, [selectedMonth, selectedYear, loadData])
   );
 
   const handleRefresh = useCallback(() => {

@@ -61,6 +61,12 @@ export interface YearAnalyticsData {
   selectedYear: string;
   totalYearExpense: number;
   totalYearExpenseFormatted: string;
+  /**
+   * Spend of the SELECTED month only - always restarts from 0 in a new month.
+   * `totalYearExpense` is the whole year, so the month view must not use it.
+   */
+  totalMonthExpense?: number;
+  totalMonthExpenseFormatted?: string;
   expenseNote: string;
   recordedMonthsBadge: string;
   recordedMonthsCount: number;

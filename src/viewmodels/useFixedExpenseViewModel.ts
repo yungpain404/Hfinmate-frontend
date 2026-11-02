@@ -30,8 +30,16 @@ export function useFixedExpenseViewModel() {
     [selectedMonth, selectedYear]
   );
 
+  // Monotonic id: a slow response for a previous month must never overwrite
+  // the sheet of the month the user is looking at now.
+  const requestIdRef = useRef(0);
+  // Mirror of the selected month label, updated synchronously wherever the
+  // selection changes, so awaited mutations can detect they were superseded.
+  const selectedLabelRef = useRef(selectedMonthLabel);
+
   const loadData = useCallback(
     async (isRefresh = false) => {
+      const requestId = ++requestIdRef.current;
       try {
         if (isRefresh) {
           setIsRefreshing(true);
@@ -40,12 +48,16 @@ export function useFixedExpenseViewModel() {
         }
         setError(null);
         const res = await fixedExpenseRepository.getFixedExpenses(selectedMonthLabel);
+        if (requestId !== requestIdRef.current) return; // superseded by a newer request
         setData(res);
       } catch (err) {
+        if (requestId !== requestIdRef.current) return;
         setError((err as Error).message || 'Không thể tải chi phí cố định');
       } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
+        if (requestId === requestIdRef.current) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     },
     [selectedMonthLabel, setData]
@@ -66,10 +78,19 @@ export function useFixedExpenseViewModel() {
   useMonthRollover(
     useCallback(() => {
       const ref = currentMonthRef();
+      // Invalidate any request still in flight for the old month.
+      requestIdRef.current++;
       setData(null);
+      const label = monthLabel(ref);
+      const alreadyOnNewMonth = ref.month === selectedMonth && ref.year === selectedYear;
+      selectedLabelRef.current = label;
       setSelectedMonth(ref.month);
       setSelectedYear(ref.year);
-    }, [])
+      // If the selection already pointed at the new month, `loadData` keeps its
+      // identity and the effect above never re-runs - reload explicitly so the
+      // screen doesn't stay empty after `setData(null)`.
+      if (alreadyOnNewMonth) loadData();
+    }, [selectedMonth, selectedYear, loadData])
   );
 
   const handleRefresh = useCallback(() => {
@@ -81,13 +102,18 @@ export function useFixedExpenseViewModel() {
       setSelectedMonth(month);
       setSelectedYear(year);
       const monthStr = monthLabel({ year, month });
+      selectedLabelRef.current = monthStr;
       try {
         await fixedExpenseRepository.updateMonth(monthStr);
         // Re-read the sheet of that month: the server may answer the switch
         // with a relabeled copy, which must not be trusted as-is.
         const sheet = await fixedExpenseRepository.getFixedExpenses(monthStr);
+        // Only apply while this is still the month on screen - otherwise a
+        // later switch (or a month rollover) would show the old sheet again.
+        if (selectedLabelRef.current !== monthStr) return;
         setData(sheet);
       } catch (err) {
+        if (selectedLabelRef.current !== monthStr) return;
         setError((err as Error).message || 'Không thể đổi tháng');
       }
     },
@@ -170,6 +196,7 @@ export function useFixedExpenseViewModel() {
       subtitle: string,
       extraNote?: { title: string; description: string } | null
     ) => {
+      const label = selectedLabelRef.current;
       try {
         const updated = await fixedExpenseRepository.updateItem(
           id,
@@ -178,14 +205,17 @@ export function useFixedExpenseViewModel() {
             subtitle,
             extraNote,
           },
-          selectedMonthLabel
+          label
         );
+        // Drop the result if the month changed while saving.
+        if (selectedLabelRef.current !== label) return;
         setData(updated);
       } catch (err) {
+        if (selectedLabelRef.current !== label) return;
         setError((err as Error).message || 'Không thể cập nhật khoản chi');
       }
     },
-    [setData, selectedMonthLabel]
+    [setData]
   );
 
   const handleSave = useCallback(

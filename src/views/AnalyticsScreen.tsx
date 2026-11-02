@@ -146,7 +146,11 @@ export const AnalyticsScreen: React.FC = () => {
           </Text>
 
           <View style={styles.heroAmountRow}>
-            <Text style={styles.heroAmount}>{data.totalYearExpenseFormatted}</Text>
+            <Text style={styles.heroAmount}>
+              {selectedTab === 'month'
+                ? data.totalMonthExpenseFormatted ?? data.totalYearExpenseFormatted
+                : data.totalYearExpenseFormatted}
+            </Text>
             <Text style={styles.heroCurrencySymbol}>đ</Text>
           </View>
 

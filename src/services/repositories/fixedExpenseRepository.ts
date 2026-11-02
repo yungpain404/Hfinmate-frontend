@@ -8,8 +8,9 @@ import {
 } from '../storage/accountScope';
 
 import {
-  currentMonthRef,
+  MonthRef,
   isSameMonth,
+  monthKey,
   monthLabel,
   parseMonthLabel,
   resolveMonthLabel,
@@ -18,6 +19,14 @@ import {
 import { expenseEvents } from '../eventBus';
 
 const FIXED_STORAGE_KEY = 'fixed_expenses_data';
+/**
+ * Sheets of every month this device has seen, keyed by `YYYY-MM`.
+ * Keeping them apart is what lets the app show last month's real figures (and
+ * a clean new month) even when the backend can only hold one open sheet.
+ */
+const FIXED_BY_MONTH_STORAGE_KEY = 'fixed_expenses_by_month';
+
+type FixedSheetsByMonth = Record<string, FixedExpenseData>;
 
 /** Blank sheet for a given month, evaluated at call time (never frozen). */
 const createDefaultFixedData = (month?: string): FixedExpenseData => {
@@ -78,6 +87,40 @@ const hasEnteredData = (data?: FixedExpenseData | null): boolean =>
   ((data.totalAmount && data.totalAmount > 0) ||
     !!(data.items && data.items.some((it) => it.amount !== null && it.amount > 0)));
 
+/** `YYYY-MM` key of a sheet, or `null` when its month label cannot be read. */
+const sheetMonthKey = (data?: FixedExpenseData | null): string | null => {
+  const ref = parseMonthLabel(data?.month);
+  return ref ? monthKey(ref) : null;
+};
+
+/** Months named by the generated item subtitles (`Chi phí gửi xe tháng 10`). */
+const subtitleMonths = (data?: FixedExpenseData | null): number[] => {
+  const months: number[] = [];
+  for (const item of data?.items ?? []) {
+    const match = /tháng\s*(\d{1,2})/i.exec(item.subtitle || '');
+    if (!match) continue;
+    const value = Number(match[1]);
+    if (value >= 1 && value <= 12) months.push(value);
+  }
+  return months;
+};
+
+/**
+ * True when the sheet really belongs to `target`.
+ *
+ * A backend that is not month-aware answers a month switch by re-labelling the
+ * sheet it currently holds: `month` reads "Tháng 11, 2026" while the generated
+ * item subtitles still describe the month the amounts were typed in
+ * (`Chi phí gửi xe tháng 10`). Accepting that copy is exactly how last month's
+ * money reappears as the new month's total, so a subtitle naming another month
+ * means "this is some other month's sheet".
+ */
+const contentBelongsToMonth = (data: FixedExpenseData, target: MonthRef): boolean => {
+  const named = subtitleMonths(data);
+  if (named.length === 0) return true;
+  return named.every((value) => value === target.month);
+};
+
 export interface IFixedExpenseRepository {
   getFixedExpenses(month?: string): Promise<FixedExpenseData>;
   updateItem(
@@ -120,18 +163,51 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
     await setScopedItem(FIXED_STORAGE_KEY, data);
   }
 
+  /** Every sheet this device has recorded, keyed by `YYYY-MM`. */
+  private async readArchive(): Promise<FixedSheetsByMonth> {
+    const stored = await getScopedItem<FixedSheetsByMonth>(FIXED_BY_MONTH_STORAGE_KEY);
+    const archive: FixedSheetsByMonth = stored && typeof stored === 'object' ? { ...stored } : {};
+    // Builds that only kept the most recent sheet: adopt it before anything
+    // overwrites that single slot, so its month keeps its recorded amounts.
+    const last = await this.readStored();
+    const lastKey = sheetMonthKey(last);
+    if (last && lastKey && !archive[lastKey]) archive[lastKey] = last;
+    return archive;
+  }
+
+  private async writeArchive(archive: FixedSheetsByMonth): Promise<void> {
+    await setScopedItem(FIXED_BY_MONTH_STORAGE_KEY, archive);
+  }
+
+  /** Remembers `data` both as the last read sheet and under its own month. */
+  private async remember(data: FixedExpenseData): Promise<void> {
+    const archive = await this.readArchive();
+    await this.writeStored(data);
+    const key = sheetMonthKey(data);
+    if (!key) return;
+    archive[key] = data;
+    await this.writeArchive(archive);
+  }
+
+  /**
+   * The sheet this device recorded for `key`.
+   * A sheet whose content points at another month is ignored - it is a
+   * carry-over copy, not a recording of the requested month.
+   */
+  private async localSheet(key: string, target: MonthRef): Promise<FixedExpenseData | null> {
+    const archive = await this.readArchive();
+    const sheet = archive[key];
+    if (!sheet) return null;
+    const cleaned = cleanData(sheet);
+    return contentBelongsToMonth(cleaned, target) ? cleaned : null;
+  }
+
   async getFixedExpenses(month?: string): Promise<FixedExpenseData> {
     const targetRef = resolveMonthLabel(month);
     const targetLabel = monthLabel(targetRef);
-
-    const stored = await this.readStored();
-    // Local cache only counts for the month it belongs to. Otherwise the
-    // previous month's amounts would be pushed back into the new month.
-    const storedMatches =
-      stored === null ||
-      isSameMonth(parseMonthLabel(stored.month) ?? currentMonthRef(), targetRef);
-
-    const localHasData = storedMatches && hasEnteredData(stored);
+    const targetKey = monthKey(targetRef);
+    // What this device has recorded for the month, if anything.
+    const localSheet = await this.localSheet(targetKey, targetRef);
 
     try {
       const response = await apiClient.get<ApiResponse<FixedExpenseData>>('/fixed-expenses', {
@@ -139,49 +215,37 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
       });
       if (response.data && response.data.data) {
         const data = cleanData(response.data.data);
-        const backendHasData = hasEnteredData(data);
-        // The backend must answer with the sheet of the requested month.
-        // A server that is not month-aware yet would reply with another
-        // month's sheet - it must never be shown for the requested month.
         const dataRef = parseMonthLabel(data.month);
         const backendMonthMatches = !!dataRef && isSameMonth(dataRef, targetRef);
 
-        if (backendHasData && backendMonthMatches) {
-          await this.writeStored(data);
+        // The backend answered for the requested month AND its amounts belong
+        // to that month: safe to show, and it becomes this month's record.
+        if (backendMonthMatches && contentBelongsToMonth(data, targetRef)) {
+          // The backend has nothing for this month yet, but this device does:
+          // push the recorded sheet back up instead of losing it.
+          if (!hasEnteredData(data) && localSheet && hasEnteredData(localSheet)) {
+            apiClient.put('/fixed-expenses', localSheet).catch(() => {});
+            await this.remember(localSheet);
+            return localSheet;
+          }
+          await this.remember(data);
           return data;
         }
 
-        // Backend returned an empty sheet, but local has valid expenses
-        // recorded for THIS month - push them back up.
-        if (localHasData && stored) {
-          apiClient.put('/fixed-expenses', stored).catch(() => {});
-          return cleanData(stored);
-        }
-
-        if (!backendMonthMatches) {
-          // Another month's data: start this month clean instead of reusing it.
-          return createDefaultFixedData(targetLabel);
-        }
-
-        await this.writeStored(data);
-        return data;
+        // The backend handed over another month's sheet, merely re-labelled as
+        // this one. Show what this device recorded for the month instead - or a
+        // clean sheet, so a brand new month always starts at 0.
+        return localSheet ?? createDefaultFixedData(targetLabel);
       }
     } catch {
       // Backend not reached or offline, fallback to per-account local storage
     }
 
-    if (!stored) {
-      const fresh = createDefaultFixedData(targetLabel);
-      await this.writeStored(fresh);
-      return fresh;
-    }
+    if (localSheet) return localSheet;
 
-    // Data from another month must never be shown for the requested one.
-    if (!storedMatches) {
-      return createDefaultFixedData(targetLabel);
-    }
-
-    return cleanData(stored);
+    const fresh = createDefaultFixedData(targetLabel);
+    await this.remember(fresh);
+    return fresh;
   }
 
   async updateItem(
@@ -199,9 +263,13 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
         month ? { ...updates, month } : updates
       );
       if (response.data && response.data.data) {
-        const data = response.data.data;
-        await this.writeStored(data);
-        return data;
+        const data = cleanData(response.data.data);
+        // Only keep an answer whose content belongs to the month it claims -
+        // a re-labelled copy of another month must not overwrite this record.
+        if (contentBelongsToMonth(data, resolveMonthLabel(month ?? data.month))) {
+          await this.remember(data);
+          return data;
+        }
       }
     } catch {
       // Fallback local update
@@ -244,7 +312,7 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
       heroNote: `${enteredCount} khoản đã ghi · chưa bao gồm trọ`,
     };
 
-    await this.writeStored(updated);
+    await this.remember(updated);
     expenseEvents.notify();
     return updated;
   }
@@ -256,23 +324,24 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
         { month }
       );
       if (response.data && response.data.data) {
-        const data = response.data.data;
-        await this.writeStored(data);
-        expenseEvents.notify();
-        return data;
+        const data = cleanData(response.data.data);
+        // Backends that are not month-aware switch months by re-labelling the
+        // sheet they hold. Such a copy is not this month's data - fall through
+        // and let the re-read below resolve the real sheet of the month.
+        if (contentBelongsToMonth(data, resolveMonthLabel(month))) {
+          await this.remember(data);
+          expenseEvents.notify();
+          return data;
+        }
       }
     } catch {
       // Fallback
     }
 
-    const data = await this.getFixedExpenses();
-    const updated: FixedExpenseData = {
-      ...data,
-      month,
-    };
-    await this.writeStored(updated);
+    const data = await this.getFixedExpenses(month);
+    await this.remember(data);
     expenseEvents.notify();
-    return updated;
+    return data;
   }
 
   async saveFixedExpenses(data: FixedExpenseData): Promise<FixedExpenseData> {
@@ -282,8 +351,8 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
         data
       );
       if (response.data && response.data.data) {
-        const saved = response.data.data;
-        await this.writeStored(saved);
+        const saved = cleanData(response.data.data);
+        await this.remember(saved);
         expenseEvents.notify();
         return saved;
       }
@@ -291,7 +360,7 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
       // Fallback
     }
 
-    await this.writeStored(data);
+    await this.remember(data);
     expenseEvents.notify();
     return data;
   }
