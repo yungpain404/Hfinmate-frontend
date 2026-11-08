@@ -219,17 +219,31 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
         const backendMonthMatches = !!dataRef && isSameMonth(dataRef, targetRef);
 
         // The backend answered for the requested month AND its amounts belong
-        // to that month: safe to show, and it becomes this month's record.
+        // to that month. A backend that is not month-aware may still answer
+        // with last month's sheet merely re-labelled as this one; we already
+        // filtered those out with contentBelongsToMonth, but when this device
+        // has no local record for the new month yet we cannot tell a genuine
+        // new-month entry from a carry-over copy. In that case start from a
+        // clean sheet so the new month always resets to zero.
         if (backendMonthMatches && contentBelongsToMonth(data, targetRef)) {
-          // The backend has nothing for this month yet, but this device does:
-          // push the recorded sheet back up instead of losing it.
-          if (!hasEnteredData(data) && localSheet && hasEnteredData(localSheet)) {
+          // This device already has a recorded sheet for the month with real
+          // amounts: keep it (source of truth for offline entries) and push it
+          // back to the backend instead of trusting a possibly-stale copy.
+          if (localSheet && hasEnteredData(localSheet)) {
             apiClient.put('/fixed-expenses', localSheet).catch(() => {});
             await this.remember(localSheet);
             return localSheet;
           }
-          await this.remember(data);
-          return data;
+          // No local record yet. Only trust the backend when it genuinely has
+          // no data (a brand-new empty month). If it reports amounts with no
+          // local record, treat it as a carry-over and start fresh.
+          if (!hasEnteredData(data)) {
+            await this.remember(data);
+            return data;
+          }
+          const fresh = createDefaultFixedData(targetLabel);
+          await this.remember(fresh);
+          return fresh;
         }
 
         // The backend handed over another month's sheet, merely re-labelled as
@@ -325,11 +339,14 @@ class FixedExpenseRepository implements IFixedExpenseRepository {
       );
       if (response.data && response.data.data) {
         const data = cleanData(response.data.data);
-        // Backends that are not month-aware switch months by re-labelling the
-        // sheet they hold. Such a copy is not this month's data - fall through
-        // and let the re-read below resolve the real sheet of the month.
+        // Never persist a backend answer into this device's per-month archive
+        // here. A backend that is not month-aware switches months by re-labelling
+        // the single sheet it holds - answering the switch with last month's
+        // amounts merely re-labelled as the requested month. Accepting that copy
+        // (and remembering it) is exactly how a previous month's real figures get
+        // overwritten and lost. Let getFixedExpenses() resolve the real sheet of
+        // the requested month from the local archive instead.
         if (contentBelongsToMonth(data, resolveMonthLabel(month))) {
-          await this.remember(data);
           expenseEvents.notify();
           return data;
         }
